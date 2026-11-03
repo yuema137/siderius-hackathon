@@ -741,6 +741,7 @@ def _copy_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, destination: P
 def _open_zip(path: Path, work: Path) -> OpenedInput:
     size = path.stat().st_size
     task_id = None
+    digest = None
     try:
         digest = _sha256_file(path)
         if size > MAX_ZIP_BYTES:
@@ -762,7 +763,7 @@ def _open_zip(path: Path, work: Path) -> OpenedInput:
                 _copy_member(archive, info, destination)
     except (OSError, zipfile.BadZipFile, EOFError, ValueError) as error:
         problem = f"the zip could not be read or unpacked: {type(error).__name__}: {error}"
-        return OpenedInput(task_id, None, size, None, [problem])
+        return OpenedInput(task_id, None, size, digest, [problem])
     return OpenedInput(task_id, target / task_id, size, digest, [])
 
 
