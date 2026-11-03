@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "seed": 20261104,
+  "evaluation_split": "validation",
+  "metrics": {
+    "accuracy": 0.859375,
+    "balanced_accuracy": 0.8533533533533533
+  },
+  "tolerance": {
+    "accuracy": 0.016,
+    "balanced_accuracy": 0.02
+  },
+  "hardware": {
+    "device": "cpu",
+    "description": "AMD Ryzen 9 7900X 12-Core Processor, 1 torch thread, Linux x86_64"
+  },
+  "wall_time": {
+    "train_seconds": 4.5,
+    "evaluate_seconds": 4.0
+  },
+  "framework_versions": {
+    "python": "3.12.13",
+    "torch": "2.10.0+cu128",
+    "siderius": "1ab94b5101f705f2bd90ba89a21fd10bb2ed98de"
+  }
+}

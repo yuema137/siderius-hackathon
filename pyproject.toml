@@ -1,0 +1,13 @@
+[project]
+name = "siderius-hackathon-kit"
+version = "1.0.0"
+description = "Galileo Hackathon Track 1 participant kit: submission spec, checker and worked example"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"

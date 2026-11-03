@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "zenodo_record_id": "ZENODO_RECORD_ID",
+  "doi": "10.5281/zenodo.ZENODO_RECORD_ID",
+  "access": "public",
+  "license": "cc-by-4.0",
+  "files": [
+    {"name": "shard_0000.csv", "size": 3542, "md5": "30b9f0548c1a1b0aefdcb48be3db03b9"},
+    {"name": "shard_0001.csv", "size": 3548, "md5": "c2ee4319a101ea950b71f0f5b8908eea"},
+    {"name": "shard_0002.csv", "size": 3547, "md5": "dd36e5d7505886ddbcb709e8cb25c33e"},
+    {"name": "shard_0003.csv", "size": 3555, "md5": "a295dd5dabe949b4f8bac0fcbc7bf3ae"}
+  ]
+}
