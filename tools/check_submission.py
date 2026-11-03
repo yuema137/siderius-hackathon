@@ -5,7 +5,10 @@ Usage::
     python tools/check_submission.py <task_dir-or-zip> --siderius <SIDERIUS checkout> \
         [--data_dir DIR] [--download] [--retrain] [--report out.json]
 
-Steps (each PASS, FAIL or SKIP with a reason; exit 0 only if no step FAILs):
+Steps (each PASS, FAIL or SKIP with a reason). Verdict and exit status:
+PASS (0) when no step fails and the required steps 3a, 3b, 4.0 and 4a ran;
+FAIL (1) when any step fails; INCOMPLETE (2) when nothing failed but a required
+step was skipped (4b may be skipped).
 
     1   package               layout, sizes, required files, refused file types,
                               TASK_CARD.md headings, JSON schemas
@@ -14,19 +17,24 @@ Steps (each PASS, FAIL or SKIP with a reason; exit 0 only if no step FAILs):
                               processes them; or --download runs fetch_data.py
     3a  siderius_admission    console init + add-task --manifest --no-gpu + check
     3b  siderius_composition  the SIDERIUS composer loads task/task.yaml and its plugins
-    4.0 baseline_weights      init/final weights load safely (torch weights_only / safetensors)
+    4.0 baseline_weights      init/final .pt weights load with torch.load(weights_only=True)
     4a  baseline_evaluate     run_baseline.py evaluate reproduces baseline_result.json
     4b  baseline_retrain      (--retrain) run_baseline.py train from init weights + seed
 
 Participant code (fetch_data.py, run_baseline.py, task plugins) runs only in
-subprocesses with timeouts, a reduced environment and a private temporary folder;
-it is never imported into this process. It is NOT sandboxed: run untrusted
-submissions in a disposable machine or container.
+subprocesses: own session, killed with its process group on timeout, umask 077,
+a fresh empty working folder per step, output captured to a file, and a reduced
+environment (PATH, LANG, LC_ALL, CUDA_VISIBLE_DEVICES, proxy and SSL_CERT_FILE
+variables, a private HOME and TMPDIR, PYTHONHASHSEED=0, PYTHONDONTWRITEBYTECODE=1,
+PYTHONUNBUFFERED=1). Checker-owned snippets (3b, 4.0) run with ``python -I``.
+Participant code is never imported into this process, but it is NOT sandboxed:
+check untrusted submissions in a disposable machine or container.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -47,6 +55,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from submission_rules import (  # noqa: E402
     KIT_VERSION,
+    MAX_FILE_BYTES,
     MAX_ZIP_BYTES,
     DataSource,
     MetricsFile,
@@ -56,6 +65,7 @@ from submission_rules import (  # noqa: E402
     compare_metrics,
     md5_file,
     sha256_bytes,
+    list_package_files,
     zip_member_problems,
 )
 
@@ -63,6 +73,22 @@ Status = Literal["PASS", "FAIL", "SKIP"]
 ZENODO_API = "https://zenodo.org/api/records/"
 RESULT_MARKER = "SUBMISSION_CHECK_RESULT "
 OUTPUT_TAIL_LINES = 40
+OUTPUT_TAIL_BYTES = 64 * 1024
+#: Bound on waiting for a killed process group to be reaped.
+KILL_WAIT_SECONDS = 10.0
+#: Steps that must run for a PASS verdict; 4b (retrain) is optional.
+REQUIRED_STEPS = ("3a", "3b", "4.0", "4a")
+PASSED_ENV = (
+    "CUDA_VISIBLE_DEVICES",
+    "LC_ALL",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    "SSL_CERT_FILE",
+)
 
 
 @dataclass
@@ -102,44 +128,74 @@ class Completed:
 
 
 def child_env(work: Path) -> dict[str, str]:
-    """A reduced environment: no credentials or tokens from the caller's shell."""
-    home_tmp = work / "child_tmp"
-    home_tmp.mkdir(mode=0o700, exist_ok=True)
+    """A reduced environment: no credentials or tokens from the caller's shell.
+
+    HOME and TMPDIR are private folders inside the work folder, so participant
+    code cannot read or write the caller's home configuration through them.
+    """
+    home = work / "child_home"
+    temporary = work / "child_tmp"
+    home.mkdir(mode=0o700, exist_ok=True)
+    temporary.mkdir(mode=0o700, exist_ok=True)
     env = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "HOME": os.environ.get("HOME", str(home_tmp)),
+        "HOME": str(home),
         "LANG": os.environ.get("LANG", "C.UTF-8"),
-        "TMPDIR": str(home_tmp),
+        "TMPDIR": str(temporary),
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONHASHSEED": "0",
         "PYTHONUNBUFFERED": "1",
     }
-    for name in ("CUDA_VISIBLE_DEVICES", "LC_ALL"):
+    for name in PASSED_ENV:
         if name in os.environ:
             env[name] = os.environ[name]
     return env
 
 
-def run(command: list[str], *, cwd: Path, timeout: float, env: dict[str, str]) -> Completed:
-    """Run one subprocess in its own session; kill the whole group on timeout."""
-    process = subprocess.Popen(
-        command,
-        cwd=cwd,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        start_new_session=True,
-        umask=0o077,
-    )
+def fresh_dir(work: Path, label: str) -> Path:
+    """A new empty private working folder for one step."""
+    return Path(tempfile.mkdtemp(prefix=f"cwd-{label}-", dir=work))
+
+
+def _kill_group(pgid: int) -> None:
     try:
-        output, _ = process.communicate(timeout=timeout)
-        code: int | None = process.returncode
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGKILL)
-        output, _ = process.communicate()
-        code = None
-    text = output.decode("utf-8", errors="replace")
+        os.killpg(pgid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def run(command: list[str], *, cwd: Path, timeout: float, env: dict[str, str]) -> Completed:
+    """Run one subprocess in its own session; kill the whole group on timeout.
+
+    Output goes to an anonymous file, not a pipe, so a grandchild that escapes
+    the kill and keeps the descriptor open cannot block the checker. Leftover
+    members of the process group are killed after a normal exit too.
+    """
+    with tempfile.TemporaryFile() as log:
+        process = subprocess.Popen(
+            command,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            umask=0o077,
+        )
+        code: int | None
+        try:
+            code = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_group(process.pid)
+            try:
+                process.wait(timeout=KILL_WAIT_SECONDS)
+            except subprocess.TimeoutExpired:
+                pass
+            code = None
+        _kill_group(process.pid)
+        size = log.seek(0, os.SEEK_END)
+        log.seek(max(0, size - OUTPUT_TAIL_BYTES))
+        text = log.read().decode("utf-8", errors="replace")
     tail = "\n".join(text.splitlines()[-OUTPUT_TAIL_LINES:])
     return Completed([str(part) for part in command], code, timeout, tail)
 
@@ -165,16 +221,21 @@ def marker_result(done: Completed) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-def step_package(root: Path, static: StaticResult, zip_bytes_size: int, zip_problems: list[str]) -> Step:
-    problems = zip_problems + static.problems
-    if zip_bytes_size > MAX_ZIP_BYTES:
+def step_package(
+    task_id: str | None, static: StaticResult | None, zip_bytes_size: int | None, zip_problems: list[str]
+) -> Step:
+    problems = list(zip_problems) + (static.problems if static is not None else [])
+    notes = list(static.notes) if static is not None else []
+    if zip_bytes_size is None:
+        notes.append("zip size not measured (the zip was not built or not read)")
+    elif zip_bytes_size > MAX_ZIP_BYTES:
         problems.append(f"the zip is {zip_bytes_size} bytes; the limit is {MAX_ZIP_BYTES} (20 MB)")
     details = {
-        "task_id": root.name,
-        "files": len(static.files),
+        "task_id": task_id,
+        "files": len(static.files) if static is not None else None,
         "zip_bytes": zip_bytes_size,
         "problems": problems,
-        "notes": static.notes,
+        "notes": notes,
     }
     if problems:
         return Step("1", "package", "FAIL", f"{len(problems)} problem(s): {problems[0]}", details)
@@ -313,7 +374,7 @@ def step_data_files(ctx: Context) -> Step:
         mode = "downloaded and processed the Zenodo files"
     else:
         return Step("2b", name, "SKIP", "pass --data_dir DIR (files already downloaded) or --download")
-    done = run(command, cwd=ctx.work, timeout=args.fetch_timeout, env=child_env(ctx.work))
+    done = run(command, cwd=fresh_dir(ctx.work, "2b"), timeout=args.fetch_timeout, env=child_env(ctx.work))
     details["command"] = done.command
     details["output_tail"] = done.output_tail
     if done.returncode != 0:
@@ -370,7 +431,7 @@ def _private_tree(path: Path) -> None:
 def step_admission(ctx: Context) -> Step:
     name = "siderius_admission"
     if ctx.python is None:
-        return Step("3a", name, "SKIP", "pass --siderius <checkout> (a SIDERIUS v1.1.0 checkout after uv sync)")
+        return Step("3a", name, "SKIP", "pass --siderius <checkout> (SIDERIUS at 1ab94b51 or later, after uv sync)")
     if not sys.platform.startswith("linux"):
         return Step("3a", name, "SKIP", "the SIDERIUS console runs on Linux only")
     if not (ctx.root / "task" / "task.yaml").is_file():
@@ -402,10 +463,10 @@ def step_admission(ctx: Context) -> Step:
     workspace = project / "siderius_workspace"
     config = workspace / "settings" / "console.json"
     package = workspace / "tasks" / task_id
-    shutil.copytree(ctx.root / "task", package, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(ctx.root / "task", package, symlinks=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     data = workspace / "data" / task_id
     if ctx.processed_data is not None:
-        shutil.copytree(ctx.processed_data, data)
+        shutil.copytree(ctx.processed_data, data, symlinks=True)
         details["data"] = "processed data from step 2b"
     else:
         data.mkdir(parents=True)
@@ -457,13 +518,13 @@ def step_composition(ctx: Context) -> Step:
     if not Path(manifest).is_file():
         return Step("3b", name, "SKIP", "task/task.yaml is missing (see step 1)")
     done = run(
-        [str(ctx.python), "-c", COMPOSE_SCRIPT, str(manifest)],
-        cwd=ctx.work,
+        [str(ctx.python), "-I", "-c", COMPOSE_SCRIPT, str(manifest)],
+        cwd=fresh_dir(ctx.work, "3b"),
         timeout=ctx.args.siderius_timeout,
         env=child_env(ctx.work),
     )
     details: dict[str, Any] = {
-        "command": done.command[:2] + ["<compose script>", str(manifest)],
+        "command": done.command[:3] + ["<compose script>", str(manifest)],
         "output_tail": done.output_tail,
     }
     result = marker_result(done)
@@ -487,16 +548,10 @@ def step_composition(ctx: Context) -> Step:
 
 WEIGHTS_SCRIPT = f"""
 import json, sys
-def load(path):
-    if path.endswith(".safetensors"):
-        from safetensors.torch import load_file
-        return load_file(path, device="cpu")
-    import torch
-    return torch.load(path, map_location="cpu", weights_only=True)
 import torch
 out = {{}}
 for path in sys.argv[1:]:
-    state = load(path)
+    state = torch.load(path, map_location="cpu", weights_only=True)
     if not isinstance(state, dict) or not state or not all(isinstance(k, str) and isinstance(v, torch.Tensor) for k, v in state.items()):
         raise SystemExit(path + ": expected a non-empty flat state dict {{name: tensor}}")
     out[path] = {{"tensors": len(state), "parameters": int(sum(v.numel() for v in state.values()))}}
@@ -516,8 +571,8 @@ def step_weights(ctx: Context) -> Step:
     if init.read_bytes() == final.read_bytes():
         return Step("4.0", name, "FAIL", "final weights are byte-identical to the initial weights", details)
     done = run(
-        [str(ctx.python), "-c", WEIGHTS_SCRIPT, str(init), str(final)],
-        cwd=ctx.work,
+        [str(ctx.python), "-I", "-c", WEIGHTS_SCRIPT, str(init), str(final)],
+        cwd=fresh_dir(ctx.work, "4.0"),
         timeout=ctx.args.siderius_timeout,
         env=child_env(ctx.work),
     )
@@ -528,15 +583,17 @@ def step_weights(ctx: Context) -> Step:
             "4.0", name, "FAIL", f"loading the weights safely {describe(done)}; see details.output_tail", details
         )
     details["loaded"] = {Path(k).name: v for k, v in result.items()}
-    return Step("4.0", name, "PASS", "both weight files load as state dicts without executing code", details)
+    return Step(
+        "4.0", name, "PASS", "both weight files load as state dicts with torch.load(weights_only=True)", details
+    )
 
 
 def _read_metrics(path: Path) -> tuple[dict[str, float] | None, str | None]:
     if not path.is_file():
         return None, f"{path.name} was not written"
     try:
-        return MetricsFile(metrics=json.loads(path.read_bytes())).metrics, None
-    except (json.JSONDecodeError, ValueError) as error:
+        return MetricsFile.model_validate_json(b'{"metrics": ' + path.read_bytes() + b"}").metrics, None
+    except ValueError as error:
         return None, f"{path.name} is not a {{metric id: number}} object: {error}"
 
 
@@ -594,7 +651,7 @@ def step_evaluate(ctx: Context) -> Step:
         "--output_dir",
         str(output),
     ]
-    done = run(command, cwd=ctx.work, timeout=ctx.args.eval_timeout, env=child_env(ctx.work))
+    done = run(command, cwd=fresh_dir(ctx.work, "4a"), timeout=ctx.args.eval_timeout, env=child_env(ctx.work))
     return _compare(
         ctx, "4a", name, output / "metrics.json", done, {"command": done.command}, "evaluating the final weights"
     )
@@ -624,16 +681,14 @@ def step_retrain(ctx: Context) -> Step:
         "--output_dir",
         str(output),
     ]
-    done = run(command, cwd=ctx.work, timeout=ctx.args.train_timeout, env=child_env(ctx.work))
+    done = run(command, cwd=fresh_dir(ctx.work, "4b"), timeout=ctx.args.train_timeout, env=child_env(ctx.work))
     details: dict[str, Any] = {"command": done.command}
     if done.returncode == 0:
         finals = sorted(p.name for p in output.glob("final_weights.*")) if output.is_dir() else []
         details["final_weights"] = finals
-        if not any(name in finals for name in ("final_weights.safetensors", "final_weights.pt")):
+        if "final_weights.pt" not in finals:
             details["output_tail"] = done.output_tail
-            return Step(
-                "4b", name, "FAIL", "train did not write final_weights.safetensors or final_weights.pt", details
-            )
+            return Step("4b", name, "FAIL", "train did not write final_weights.pt", details)
     return _compare(ctx, "4b", name, output / "metrics.json", done, details, f"retraining with seed {reported.seed}")
 
 
@@ -642,38 +697,93 @@ def step_retrain(ctx: Context) -> Step:
 # ---------------------------------------------------------------------------
 
 
-def open_input(path: Path, work: Path) -> tuple[Path, int, list[str], str]:
-    """``(submission folder, zip size, zip-level problems, sha256 of the zip)``."""
+@dataclass
+class OpenedInput:
+    """The submission as the checker sees it before step 1."""
+
+    task_id: str | None
+    root: Path | None  # None: not unpacked, only step 1 runs
+    zip_bytes: int | None
+    zip_sha256: str | None
+    problems: list[str]
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _open_folder(path: Path) -> OpenedInput:
+    root = path.resolve()
+    files, _ = list_package_files(root)
+    oversized = [f for f in files if (root / f).stat().st_size > MAX_FILE_BYTES]
+    if oversized:
+        # Step 1 reports each oversized file; do not read them into memory.
+        return OpenedInput(root.name, root, None, None, [])
+    payload = build_zip_bytes(root, files)
+    return OpenedInput(root.name, root, len(payload), sha256_bytes(payload), [])
+
+
+def _copy_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, destination: Path) -> None:
+    """Extract one member, never writing more than its declared size."""
+    written = 0
+    with archive.open(info) as source, destination.open("xb") as sink:
+        while chunk := source.read(1 << 20):
+            written += len(chunk)
+            if written > info.file_size:
+                raise zipfile.BadZipFile(f"{info.filename} expands beyond its declared size")
+            sink.write(chunk)
+
+
+def _open_zip(path: Path, work: Path) -> OpenedInput:
+    size = path.stat().st_size
+    task_id = None
+    try:
+        digest = _sha256_file(path)
+        if size > MAX_ZIP_BYTES:
+            problem = f"the zip is {size} bytes; the limit is {MAX_ZIP_BYTES} (20 MB); not unpacked"
+            return OpenedInput(None, None, size, digest, [problem])
+        with zipfile.ZipFile(path) as archive:
+            task_id, problems = zip_member_problems(archive)
+            if task_id is None or problems:
+                problems.append("the zip was not unpacked; fix the problems above and rebuild it")
+                return OpenedInput(task_id, None, size, digest, problems)
+            target = work / "unpacked"
+            target.mkdir(mode=0o700)
+            for info in archive.infolist():
+                destination = target / info.filename
+                if info.is_dir():
+                    destination.mkdir(parents=True, exist_ok=True)
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                _copy_member(archive, info, destination)
+    except (OSError, zipfile.BadZipFile, EOFError, ValueError) as error:
+        problem = f"the zip could not be read or unpacked: {type(error).__name__}: {error}"
+        return OpenedInput(task_id, None, size, None, [problem])
+    return OpenedInput(task_id, target / task_id, size, digest, [])
+
+
+def open_input(path: Path, work: Path) -> OpenedInput:
+    """Measure a folder as the zip make_submission.py would build, or bounded-unpack a zip."""
     if path.is_dir():
-        root = path.resolve()
-        static_files = check_static(root).files
-        payload = build_zip_bytes(root, static_files)
-        return root, len(payload), [], sha256_bytes(payload)
-    if not zipfile.is_zipfile(path):
-        raise SystemExit(f"{path} is neither a folder nor a zip file")
-    payload = path.read_bytes()
-    problems: list[str] = []
-    with zipfile.ZipFile(path) as archive:
-        task_id, member_problems = zip_member_problems(archive)
-        problems += member_problems
-        if task_id is None or any("unsafe path" in p or "symlink" in p for p in member_problems):
-            raise SystemExit("refusing to unpack this zip: " + "; ".join(member_problems))
-        target = work / "unpacked"
-        target.mkdir(mode=0o700)
-        for info in archive.infolist():
-            if info.is_dir():
-                continue
-            destination = target / info.filename
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            with archive.open(info) as source, destination.open("wb") as sink:
-                shutil.copyfileobj(source, sink)
-    return target / task_id, len(payload), problems, sha256_bytes(payload)
+        return _open_folder(path)
+    if not path.is_file() or not zipfile.is_zipfile(path):
+        return OpenedInput(None, None, None, None, [f"{path} is neither a folder nor a zip file"])
+    return _open_zip(path, work)
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     cli = argparse.ArgumentParser(description="Self-check a Track 1 task submission (folder or zip).")
     cli.add_argument("submission", type=Path, help="the <task_id>/ folder or <task_id>.zip")
-    cli.add_argument("--siderius", type=Path, help="SIDERIUS v1.1.0 checkout with .venv (uv sync --group dev --frozen)")
+    cli.add_argument(
+        "--siderius",
+        type=Path,
+        help="SIDERIUS checkout at 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de or later, with .venv "
+        "(uv sync --group dev --frozen)",
+    )
     cli.add_argument("--data_dir", type=Path, help="folder holding the Zenodo files, already downloaded")
     cli.add_argument("--download", action="store_true", help="let fetch_data.py download from Zenodo")
     cli.add_argument("--retrain", action="store_true", help="also retrain the baseline (step 4b)")
@@ -689,12 +799,34 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
-def check(args: argparse.Namespace, fetch: Fetch = fetch_json) -> dict[str, Any]:
+STEP_NAMES = (
+    ("2a", "zenodo_record"),
+    ("2b", "data_files"),
+    ("3a", "siderius_admission"),
+    ("3b", "siderius_composition"),
+    ("4.0", "baseline_weights"),
+    ("4a", "baseline_evaluate"),
+    ("4b", "baseline_retrain"),
+)
+
+
+def verdict_of(steps: list[Step]) -> tuple[str, list[str], list[str]]:
+    """``(PASS | FAIL | INCOMPLETE, failed step ids, skipped required step ids)``."""
+    failed = [step.id for step in steps if step.status == "FAIL"]
+    skipped = [step.id for step in steps if step.status == "SKIP" and step.id in REQUIRED_STEPS]
+    if failed:
+        return "FAIL", failed, skipped
+    if skipped:
+        return "INCOMPLETE", failed, skipped
+    return "PASS", failed, skipped
+
+
+def check(args: argparse.Namespace, fetch: Fetch | None = None) -> dict[str, Any]:
+    fetch = fetch or fetch_json
     work = Path(tempfile.mkdtemp(prefix="track1-check-"))
     os.chmod(work, 0o700)
     try:
-        root, zip_size, zip_problems, digest = open_input(args.submission, work)
-        static = check_static(root)
+        opened = open_input(args.submission, work)
         python = None
         identity = None
         if args.siderius is not None:
@@ -703,25 +835,31 @@ def check(args: argparse.Namespace, fetch: Fetch = fetch_json) -> dict[str, Any]
             if not candidate.is_file():
                 raise SystemExit(f"{candidate} does not exist; run `uv sync --group dev --frozen` in the checkout")
             python = candidate
-        ctx = Context(root=root, work=work, args=args, static=static, python=python)
-        steps = [step_package(root, static, zip_size, zip_problems)]
-        steps.append(step_zenodo_record(static.data_source, fetch))
-        steps.append(step_data_files(ctx))
-        steps.append(step_admission(ctx))
-        steps.append(step_composition(ctx))
-        steps.append(step_weights(ctx))
-        steps.append(step_evaluate(ctx))
-        steps.append(step_retrain(ctx))
-        failed = [step.id for step in steps if step.status == "FAIL"]
+        if opened.root is None:
+            steps = [step_package(opened.task_id, None, opened.zip_bytes, opened.problems)]
+            steps += [Step(i, n, "SKIP", "the submission was not unpacked (see step 1)") for i, n in STEP_NAMES]
+        else:
+            static = check_static(opened.root)
+            ctx = Context(root=opened.root, work=work, args=args, static=static, python=python)
+            steps = [step_package(opened.task_id, static, opened.zip_bytes, opened.problems)]
+            steps.append(step_zenodo_record(static.data_source, fetch))
+            steps.append(step_data_files(ctx))
+            steps.append(step_admission(ctx))
+            steps.append(step_composition(ctx))
+            steps.append(step_weights(ctx))
+            steps.append(step_evaluate(ctx))
+            steps.append(step_retrain(ctx))
+        verdict, failed, skipped = verdict_of(steps)
         return {
             "kit_version": KIT_VERSION,
-            "task_id": root.name,
+            "task_id": opened.task_id,
             "submission": str(args.submission),
-            "zip_sha256": digest,
-            "zip_bytes": zip_size,
+            "zip_sha256": opened.zip_sha256,
+            "zip_bytes": opened.zip_bytes,
             "siderius": identity,
-            "verdict": "FAIL" if failed else "PASS",
+            "verdict": verdict,
             "failed_steps": failed,
+            "skipped_required_steps": skipped,
             "steps": [asdict(step) for step in steps],
         }
     finally:
@@ -729,6 +867,9 @@ def check(args: argparse.Namespace, fetch: Fetch = fetch_json) -> dict[str, Any]
             print(f"work folder kept: {work}", file=sys.stderr)
         else:
             shutil.rmtree(work, ignore_errors=True)
+
+
+EXIT_STATUS = {"PASS": 0, "FAIL": 1, "INCOMPLETE": 2}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -739,10 +880,12 @@ def main(argv: list[str] | None = None) -> int:
         for problem in step["details"].get("problems", [])[1:]:
             print(f"             - {problem}")
     print(f"verdict: {report['verdict']}  (zip sha256 {report['zip_sha256']}, {report['zip_bytes']} bytes)")
+    if report["verdict"] == "INCOMPLETE":
+        print(f"required steps skipped: {', '.join(report['skipped_required_steps'])}")
     if args.report is not None:
         args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(f"report: {args.report}")
-    return 0 if report["verdict"] == "PASS" else 1
+    return EXIT_STATUS[report["verdict"]]
 
 
 if __name__ == "__main__":

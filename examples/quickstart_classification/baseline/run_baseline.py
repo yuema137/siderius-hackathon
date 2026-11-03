@@ -73,10 +73,7 @@ def full_scope(data_path, *, training: bool):
 
 
 def load_state(path: Path) -> dict[str, torch.Tensor]:
-    if path.suffix == ".safetensors":
-        from safetensors.torch import load_file
-
-        return load_file(str(path), device="cpu")
+    """Load a state dict without executing pickled code."""
     return torch.load(path, map_location="cpu", weights_only=True)
 
 

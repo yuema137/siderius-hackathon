@@ -59,9 +59,12 @@ def test_weights_outside_the_two_named_files_are_refused(submission: Path, relat
     assert any(relative in p and "weights are allowed only" in p for p in problems_of(submission))
 
 
-def test_two_formats_of_the_same_weights_are_refused(submission: Path) -> None:
-    (submission / "baseline" / "init_weights.safetensors").write_bytes(b"0")
-    assert any("more than one format" in p for p in problems_of(submission))
+def test_safetensors_weights_are_refused(submission: Path) -> None:
+    """Only .pt is supported: the SIDERIUS environment has no safetensors package."""
+    (submission / "baseline" / "init_weights.pt").rename(submission / "baseline" / "init_weights.safetensors")
+    problems = problems_of(submission)
+    assert any("init_weights.safetensors: weights are allowed only" in p for p in problems)
+    assert "missing baseline/init_weights.pt" in problems
 
 
 def test_missing_weights_and_required_files_are_named(submission: Path) -> None:
@@ -105,8 +108,8 @@ def test_file_size_limit_is_inclusive(submission: Path) -> None:
 
 def test_zip_over_20_mb_fails_step_1(submission: Path) -> None:
     static = check_static(submission)
-    assert checker.step_package(submission, static, MAX_ZIP_BYTES, []).status == "PASS"
-    step = checker.step_package(submission, static, MAX_ZIP_BYTES + 1, [])
+    assert checker.step_package(submission.name, static, MAX_ZIP_BYTES, []).status == "PASS"
+    step = checker.step_package(submission.name, static, MAX_ZIP_BYTES + 1, [])
     assert step.status == "FAIL" and "20 MB" in step.reason
 
 
@@ -359,11 +362,17 @@ def test_built_zip_round_trips_through_the_checker(submission: Path, tmp_path: P
     path, size, digest = make_submission.make(submission, tmp_path)
     work = tmp_path / "work"
     work.mkdir()
-    root, zip_size, problems, zip_digest = checker.open_input(path, work)
-    assert (root.name, zip_size, problems, zip_digest) == ("quickstart_classification", size, [], digest)
-    assert check_static(root).files == check_static(submission).files
-    folder_digest = checker.open_input(submission, work)[3]
-    assert folder_digest == digest  # a folder is measured as the zip make_submission would build
+    opened = checker.open_input(path, work)
+    assert opened.root is not None
+    assert (opened.task_id, opened.zip_bytes, opened.problems, opened.zip_sha256) == (
+        "quickstart_classification",
+        size,
+        [],
+        digest,
+    )
+    assert check_static(opened.root).files == check_static(submission).files
+    # a folder is measured as the zip make_submission would build
+    assert checker.open_input(submission, work).zip_sha256 == digest
 
 
 def _zip(tmp_path: Path, members: dict[str, bytes], symlink: str | None = None) -> zipfile.ZipFile:
@@ -401,9 +410,9 @@ def test_checker_refuses_to_unpack_unsafe_zip(tmp_path: Path) -> None:
     archive.close()
     work = tmp_path / "work"
     work.mkdir()
-    with pytest.raises(SystemExit, match="refusing to unpack"):
-        checker.open_input(tmp_path / "upload.zip", work)
-    assert not (tmp_path.parent / "evil.py").exists()
+    opened = checker.open_input(tmp_path / "upload.zip", work)
+    assert opened.root is None and any("not unpacked" in p for p in opened.problems)
+    assert not (tmp_path.parent / "evil.py").exists() and list(work.iterdir()) == []
 
 
 def test_build_zip_bytes_matches_listed_files_only(submission: Path) -> None:
@@ -430,3 +439,173 @@ def test_without_siderius_or_data_the_dependent_steps_skip(submission: Path) -> 
         "4b": "SKIP",
     }
     assert report["verdict"] == "FAIL" and report["failed_steps"] == ["2a"]
+
+
+# -- bounded unpacking (zip bombs, malformed zips) ------------------------------
+
+
+def _write_zip(path: Path, members: dict[str, bytes], compression: int = zipfile.ZIP_DEFLATED) -> Path:
+    with zipfile.ZipFile(path, "w", compression) as archive:
+        for name, payload in members.items():
+            archive.writestr(name, payload)
+    return path
+
+
+def _unpacked_bytes(work: Path) -> int:
+    return sum(p.stat().st_size for p in work.rglob("*") if p.is_file())
+
+
+def test_highly_compressed_oversized_member_is_never_unpacked(tmp_path: Path) -> None:
+    """A small zip declaring a member above 5 MB is refused before any byte is written."""
+    upload = _write_zip(tmp_path / "t.zip", {"t/big.csv": b"0" * (MAX_FILE_BYTES + 1)})
+    assert upload.stat().st_size < 100_000
+    work = tmp_path / "work"
+    work.mkdir()
+    opened = checker.open_input(upload, work)
+    assert opened.root is None
+    assert any("big.csv is" in p and "limit per file" in p for p in opened.problems)
+    assert _unpacked_bytes(work) == 0
+
+
+def test_zip_over_the_upload_limit_is_not_opened(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    upload = _write_zip(tmp_path / "t.zip", {"t/a.py": b"x" * 2000}, zipfile.ZIP_STORED)
+    monkeypatch.setattr(checker, "MAX_ZIP_BYTES", 1000)
+    work = tmp_path / "work"
+    work.mkdir()
+    opened = checker.open_input(upload, work)
+    assert opened.root is None and "not unpacked" in opened.problems[0]
+    assert _unpacked_bytes(work) == 0
+
+
+def test_expanded_total_and_member_count_bounds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import submission_rules
+
+    upload = _write_zip(tmp_path / "t.zip", {f"t/f{i}.py": b"x" * 100 for i in range(5)})
+    monkeypatch.setattr(submission_rules, "MAX_EXPANDED_BYTES", 400)
+    monkeypatch.setattr(submission_rules, "MAX_ZIP_MEMBERS", 4)
+    with zipfile.ZipFile(upload) as archive:
+        _, problems = zip_member_problems(archive)
+    assert any("declares 500 bytes when unpacked" in p for p in problems)
+    assert any("has 5 members; the limit is 4" in p for p in problems)
+
+
+def test_duplicate_member_names_are_refused(tmp_path: Path) -> None:
+    path = tmp_path / "t.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("t/a.py", b"first")
+        with pytest.warns(UserWarning, match="Duplicate name"):
+            archive.writestr("t/a.py", b"second")
+    with zipfile.ZipFile(path) as archive:
+        _, problems = zip_member_problems(archive)
+    assert any("'t/a.py' appears more than once" in p for p in problems)
+
+
+@pytest.mark.parametrize("case", ["file_folder_collision", "corrupt_data"])
+def test_malformed_zip_is_a_step_1_failure_not_a_crash(tmp_path: Path, case: str) -> None:
+    if case == "file_folder_collision":
+        upload = _write_zip(tmp_path / "t.zip", {"t/a": b"file", "t/a/b.py": b"inside"})
+    else:
+        upload = _write_zip(tmp_path / "t.zip", {"t/a.py": b"A" * 1000}, zipfile.ZIP_STORED)
+        raw = bytearray(upload.read_bytes())
+        start = raw.index(b"A" * 1000)
+        raw[start : start + 10] = b"B" * 10  # CRC no longer matches
+        upload.write_bytes(bytes(raw))
+    report = checker.check(checker.parse_args([str(upload)]), fetch=_stub(404, None)[0])
+    assert report["verdict"] == "FAIL" and report["failed_steps"] == ["1"]
+    assert "could not be read or unpacked" in report["steps"][0]["reason"]
+    assert all(step["status"] == "SKIP" for step in report["steps"][1:])
+
+
+def test_folder_with_oversized_file_is_not_read_into_a_zip(submission: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (submission / "task" / "huge.csv").write_bytes(b"0" * (MAX_FILE_BYTES + 1))
+
+    def refuse(*_: object) -> bytes:
+        raise AssertionError("build_zip_bytes must not run when a file exceeds 5 MB")
+
+    monkeypatch.setattr(checker, "build_zip_bytes", refuse)
+    report = checker.check(checker.parse_args([str(submission)]), fetch=_stub(404, None)[0])
+    assert report["zip_bytes"] is None and report["steps"][0]["status"] == "FAIL"
+
+
+# -- verdict, subprocess isolation ----------------------------------------------
+
+
+def _steps(**statuses: str) -> list[checker.Step]:
+    ids = {"s1": "1", "s3a": "3a", "s3b": "3b", "s40": "4.0", "s4a": "4a", "s4b": "4b"}
+    return [checker.Step(ids[key], key, status, "") for key, status in statuses.items()]
+
+
+def test_verdict_distinguishes_incomplete_from_pass_and_fail() -> None:
+    assert checker.verdict_of(_steps(s1="PASS", s3a="PASS", s3b="PASS", s40="PASS", s4a="PASS", s4b="SKIP"))[0] == (
+        "PASS"
+    )
+    verdict, _, skipped = checker.verdict_of(_steps(s1="PASS", s3a="SKIP", s3b="PASS", s40="PASS", s4a="SKIP"))
+    assert verdict == "INCOMPLETE" and skipped == ["3a", "4a"]
+    assert checker.verdict_of(_steps(s1="FAIL", s3a="SKIP"))[0] == "FAIL"
+
+
+def test_all_static_steps_passing_without_siderius_is_incomplete_exit_2(
+    submission: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("data_source.json", "TASK_CARD.md"):
+        path = submission / name
+        path.write_text(path.read_text().replace("ZENODO_RECORD_ID", "4242"))
+    source = DataSource.model_validate_json((submission / "data_source.json").read_bytes())
+    monkeypatch.setattr(checker, "fetch_json", _stub(200, _record(source))[0])
+    assert checker.main([str(submission)]) == 2
+
+
+def test_timeout_returns_even_if_a_grandchild_escapes_the_group(tmp_path: Path) -> None:
+    """An escaped grandchild holding stdout must not keep the checker waiting."""
+    import sys
+    import time
+
+    script = "import subprocess, time; subprocess.Popen(['setsid', 'sleep', '20']); time.sleep(20)"
+    started = time.monotonic()
+    done = checker.run([sys.executable, "-c", script], cwd=tmp_path, timeout=1, env=checker.child_env(tmp_path))
+    assert done.returncode is None
+    assert time.monotonic() - started < 10
+
+
+def test_child_env_has_private_home_and_passes_proxies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy:3128")
+    monkeypatch.setenv("no_proxy", "localhost")
+    monkeypatch.setenv("SSL_CERT_FILE", "/etc/ssl/cert.pem")
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+    env = checker.child_env(tmp_path)
+    assert env["HOME"] == str(tmp_path / "child_home") and (tmp_path / "child_home").is_dir()
+    assert env["HTTPS_PROXY"] == "http://proxy:3128" and env["no_proxy"] == "localhost"
+    assert env["SSL_CERT_FILE"] == "/etc/ssl/cert.pem" and "OPENAI_API_KEY" not in env
+
+
+def test_composition_step_cannot_import_modules_planted_in_the_work_folder(submission: Path, tmp_path: Path) -> None:
+    """fetch_data.py can write into the work folder; 3b must not import from it.
+
+    Uses the base interpreter (no SIDERIUS installed), so only a planted module could make 3b pass.
+    """
+    import sys
+
+    base = Path(getattr(sys, "_base_executable", sys.executable))
+    if base == Path(sys.executable):
+        pytest.skip("needs a base interpreter distinct from the SIDERIUS virtualenv")
+
+    work = tmp_path / "work"
+    (work / "workflows").mkdir(parents=True)
+    (work / "workflows" / "__init__.py").write_text("")
+    (work / "workflows" / "task_composition.py").write_text(
+        "import json\n"
+        "def compose_run_task_bindings(path):\n"
+        f"    print({checker.RESULT_MARKER!r} + json.dumps({{'primary_metric': {{'id': 'x', 'direction': 'higher'}},"
+        " 'secondary_metrics': [], 'task_health': 'none'}))\n"
+        "    raise SystemExit(0)\n"
+    )
+    ctx = checker.Context(
+        root=submission,
+        work=work,
+        args=checker.parse_args([str(submission)]),
+        static=check_static(submission),
+        python=base,
+    )
+    step = checker.step_composition(ctx)
+    assert step.status == "FAIL", step.reason
+    assert "ModuleNotFoundError" in step.details["output_tail"]

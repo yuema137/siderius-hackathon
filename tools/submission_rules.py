@@ -18,12 +18,15 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictFloat, ValidationError, field_validator, model_validator
 
 KIT_VERSION = "1.0.0"
 
 MAX_ZIP_BYTES = 20 * 1024 * 1024
 MAX_FILE_BYTES = 5 * 1024 * 1024
+#: Zip-bomb bounds applied before anything is unpacked.
+MAX_EXPANDED_BYTES = 200 * 1024 * 1024
+MAX_ZIP_MEMBERS = 10_000
 
 #: The record-id placeholder the worked example ships with. A real submission
 #: replaces it with the numeric Zenodo record id.
@@ -35,7 +38,9 @@ TASK_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,80}")
 DATA_SUFFIXES = frozenset({".npz", ".npy", ".h5", ".hdf5", ".parquet", ".pkl", ".pickle", ".feather"})
 #: Model weights; allowed only as baseline/init_weights.* and baseline/final_weights.*.
 WEIGHT_SUFFIXES = frozenset({".safetensors", ".pt", ".pth", ".ckpt", ".bin", ".onnx"})
-ALLOWED_WEIGHT_SUFFIXES = (".safetensors", ".pt")
+#: The one supported weight format: a torch state dict loadable with
+#: torch.load(weights_only=True). (safetensors is not in the SIDERIUS environment.)
+ALLOWED_WEIGHT_SUFFIXES = (".pt",)
 #: Archives could smuggle data or weights past the rules above; refused everywhere.
 ARCHIVE_SUFFIXES = frozenset({".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".zst"})
 #: Editor/cache clutter: skipped when building a zip and when checking a folder,
@@ -53,7 +58,7 @@ REQUIRED_FILES = (
 )
 WEIGHT_STEMS = ("baseline/init_weights", "baseline/final_weights")
 
-#: Level-2 headings TASK_CARD.md must contain, in this order.
+#: Level-2 headings TASK_CARD.md must contain (any order; matched case-insensitively).
 CARD_HEADINGS = (
     "Scientific question",
     "Task design",
@@ -170,7 +175,7 @@ class BaselineResult(BaseModel):
     schema_version: Literal[1]
     seed: int
     evaluation_split: str = Field(min_length=1, description="the split metrics.json is computed on")
-    metrics: dict[str, float] = Field(min_length=1, description="by declared metric id")
+    metrics: dict[str, StrictFloat] = Field(min_length=1, description="by declared metric id")
     tolerance: dict[str, float] = Field(
         description="absolute reproduction tolerance per metric id (evaluate and retrain)"
     )
@@ -194,7 +199,7 @@ class MetricsFile(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    metrics: dict[str, float] = Field(min_length=1)
+    metrics: dict[str, StrictFloat] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _finite_values(self) -> MetricsFile:
@@ -304,8 +309,7 @@ def file_rule_problems(relative: str, size: int) -> list[str]:
         stem = str(path.with_suffix(""))
         if stem not in WEIGHT_STEMS or suffix not in ALLOWED_WEIGHT_SUFFIXES:
             problems.append(
-                f"{relative}: weights are allowed only as baseline/init_weights.(safetensors|pt) "
-                "and baseline/final_weights.(safetensors|pt)"
+                f"{relative}: weights are allowed only as baseline/init_weights.pt and baseline/final_weights.pt"
             )
     return problems
 
@@ -318,7 +322,7 @@ def weight_file(files: list[str], stem: str) -> tuple[str | None, str | None]:
         if PurePosixPath(f).with_suffix("").as_posix() == stem and PurePosixPath(f).suffix in ALLOWED_WEIGHT_SUFFIXES
     ]
     if not found:
-        return None, f"missing {stem}.safetensors (or {stem}.pt)"
+        return None, f"missing {stem}.pt"
     if len(found) > 1:
         return None, f"{stem} exists in more than one format: {found}; keep one"
     return found[0], None
@@ -473,8 +477,16 @@ def zip_member_problems(archive: zipfile.ZipFile) -> tuple[str | None, list[str]
     problems = []
     tops = set()
     total = 0
-    for info in archive.infolist():
+    members = archive.infolist()
+    if len(members) > MAX_ZIP_MEMBERS:
+        problems.append(f"the zip has {len(members)} members; the limit is {MAX_ZIP_MEMBERS}")
+    seen: set[str] = set()
+    for info in members:
         name = info.filename
+        if name.rstrip("/") in seen:
+            problems.append(f"zip member {name!r} appears more than once")
+            continue
+        seen.add(name.rstrip("/"))
         path = PurePosixPath(name)
         if name.startswith("/") or "\\" in name or ".." in path.parts or not path.parts:
             problems.append(f"zip member {name!r} has an unsafe path")
@@ -498,8 +510,8 @@ def zip_member_problems(archive: zipfile.ZipFile) -> tuple[str | None, list[str]
     if len(tops) != 1:
         problems.append(f"the zip must contain exactly one top folder <task_id>/; found {sorted(tops)}")
         return None, problems
-    if total > 10 * MAX_ZIP_BYTES:
-        problems.append("the zip expands to more than 200 MB")
+    if total > MAX_EXPANDED_BYTES:
+        problems.append(f"the zip declares {total} bytes when unpacked; the limit is {MAX_EXPANDED_BYTES} (200 MB)")
     return tops.pop(), problems
 
 
