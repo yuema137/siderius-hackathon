@@ -22,8 +22,9 @@ Two kinds of output, never mixed:
 ## Before running anything
 
 1. Identify the submission folder (`<task_id>/`) or zip, the SIDERIUS checkout
-   (`--siderius`; it must have `.venv/bin/python` from
-   `uv sync --group dev --frozen`) and where the data is: already downloaded
+   (`--siderius`: <https://github.com/yuema137/SIDERIUS> at commit
+   `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de` or later, or the 1.1.0 tag once
+   published, with `.venv/bin/python` from `uv sync --group dev --frozen`) and where the data is: already downloaded
    (`--data_dir`) or to be downloaded (`--download`). Ask only for what you
    cannot find; reuse paths the author already gave.
 2. Read SPEC.md sections 1 to 6 and the author's `TASK_CARD.md`,
@@ -48,7 +49,15 @@ $SIDERIUS/.venv/bin/python tools/check_submission.py <task_dir-or-zip> \
 Read the printed lines and the report JSON (`steps[].details` holds problem
 lists, command output tails and metric comparisons). Record the exact command,
 exit status and verdict. Use the exit status, not your reading of the text, as
-the verdict: 0 means no FAIL.
+the verdict: 0 is `PASS`, 1 is `FAIL`, 2 is `INCOMPLETE` (nothing failed but a
+required step, 3a, 3b, 4.0 or 4a, was skipped). Never report `INCOMPLETE` as a
+pass.
+
+What a PASS means: 2b, 4a and 4b passing shows that the author's scripts ran
+and produced numbers consistent with `baseline_result.json`, keyed by the
+declared metric ids. It does not prove that `run_baseline.py` used the task's
+metric plugin or that `fetch_data.py` does what the card says; the organizers
+review the code. Check that yourself in the advisory review (item 6).
 
 Present the result as a table of step, status and reason, then:
 
@@ -62,12 +71,12 @@ Present the result as a table of step, status and reason, then:
 
 | Step | Typical FAIL | Fix |
 | --- | --- | --- |
-| 1 | data file in the package; weights outside `baseline/`; file > 5 MB; missing heading or empty section; card lacks the DOI; schema error naming a field | move data to Zenodo and read it via `fetch_data.py`; rename or move weights to `baseline/init_weights.*`/`final_weights.*`; split or shrink the file; fill the section; copy the DOI from `data_source.json` into `## Data`; correct the named field per SPEC.md section 2 or 4.2 |
+| 1 | zip not unpacked (over 20 MB, a member over 5 MB, duplicate names, malformed); data file in the package; weights outside `baseline/`; file > 5 MB; missing heading or empty section; card lacks the DOI; schema error naming a field | check the folder, then rebuild the zip with `tools/make_submission.py`; move data to Zenodo and read it via `fetch_data.py`; rename or move weights to `baseline/init_weights.*`/`final_weights.*`; split or shrink the file; fill the section; copy the DOI from `data_source.json` into `## Data`; correct the named field per SPEC.md section 2 or 4.2 |
 | 2a | placeholder id; HTTP 404; resolves to another id; md5/size/license/access mismatch | publish the record and copy its version id (not the concept id) and DOI; copy name, size and md5 from Zenodo's file list; align `license`/`access` with the Zenodo record |
 | 2b | md5 differs for a `--data_dir` file; `fetch_data.py` non-zero exit or wrote nothing | re-download or correct `data_source.json`; read `details.output_tail` for the traceback and fix the script; make sure it writes into `--output_dir` |
 | 3a | `init` refused (permissions); `add-task`/`check` names a field or file | the checker creates private folders itself, so an `init` refusal is an environment problem to report; otherwise fix the named manifest field or file inside `task/` (every path relative to `task/`, nothing outside it) |
 | 3b | `TaskCompositionError` naming a section, file or symbol | fix that `task.yaml` section; see the SIDERIUS [task composition reference](https://github.com/yuema137/SIDERIUS/blob/master/docs/reference/task-composition.md) |
-| 4.0 | weights do not load with `weights_only=True`; not a flat state dict; final equals initial | save `model.state_dict()` with `torch.save` or safetensors; save the trained weights as final |
+| 4.0 | weights do not load with `torch.load(weights_only=True)`; not a flat state dict; final equals initial | save `model.state_dict()` with `torch.save` to `baseline/init_weights.pt` and `baseline/final_weights.pt` (`.pt` is the only supported format; safetensors is refused); save the trained weights as final |
 | 4a/4b | non-zero exit; `metrics.json` ids differ from declared ids; value outside tolerance | read `output_tail`; key `metrics.json` by the declared metric ids and compute them with the task's metric plugin; make training seed-deterministic, or set a tolerance that honestly covers the measured spread and state it in the card |
 
 Never edit `baseline_result.json` metrics or tolerance just to make a check
@@ -103,6 +112,11 @@ note on a file and line you read; say what you could not verify. Cover:
 5. **Reproducibility and cost.** Seed use in `run_baseline.py`, deterministic
    settings, the GPU and wall time stated, a tolerance that matches the
    measured spread.
+6. **Code matches the claims.** Read `run_baseline.py` and `fetch_data.py`:
+   does `metrics.json` come from the metric classes `task.yaml` binds (not a
+   re-implementation or hard-coded numbers)? Does the evaluation use the
+   declared evaluation split? Does `fetch_data.py` verify checksums and write
+   only what the data path reads?
 
 End with the deterministic verdict again, in one line, so the advisory notes
 are not read as the result.

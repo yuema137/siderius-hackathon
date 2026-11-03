@@ -17,17 +17,8 @@ free research data archive that gives every dataset a permanent DOI.
   (`bwrap`, the sandbox SIDERIUS runs tasks in). Check it with
   `bwrap --ro-bind / / true && echo ok`.
 - **Python 3.12+** and **[uv](https://docs.astral.sh/uv/)**.
-- **A SIDERIUS v1.1.0 checkout**, installed once:
-
-  ```bash
-  git clone https://github.com/yuema137/SIDERIUS.git
-  cd SIDERIUS
-  uv sync --group dev --frozen
-  ```
-
-  Success: `.venv/bin/python` exists. Every command below uses this
-  interpreter; the examples write it as `$SIDERIUS/.venv/bin/python`, so set
-  `SIDERIUS=/absolute/path/to/SIDERIUS` first.
+- **SIDERIUS** from <https://github.com/yuema137/SIDERIUS> at commit
+  `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de` or later (see step 0).
 - **This kit**, cloned anywhere.
 - **A Zenodo account** to publish your data.
 - **A GPU only if your baseline needs one.** No API keys are needed: the
@@ -39,12 +30,28 @@ free research data archive that gives every dataset a permanent DOI.
 | --- | --- |
 | [SPEC.md](SPEC.md) | The exact rules: layout, file formats, size limits, every check. Your coding agent reads this. |
 | [templates/TASK_CARD.md](templates/TASK_CARD.md) | The task card to fill in, with guidance under each heading. |
-| [examples/quickstart_classification/](examples/quickstart_classification/) | A complete, passing submission to copy from. |
+| [examples/quickstart_classification/](examples/quickstart_classification/) | A complete submission to copy from. It passes every check except 2a (the Zenodo record) until the organizers publish its data and fill in the record id. |
 | `tools/check_submission.py` | The self-check. Run it before every upload. |
 | `tools/make_submission.py` | Builds the upload zip and prints its checksum. |
 | [skills/track1-task-check/SKILL.md](skills/track1-task-check/SKILL.md) | Instructions for a coding agent (Claude Code, Codex) helping you check and improve your task. |
 
 ## Steps
+
+### 0. Install SIDERIUS
+
+```bash
+git clone https://github.com/yuema137/SIDERIUS.git
+cd SIDERIUS
+git checkout 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de
+uv sync --group dev --frozen
+```
+
+Success: the sync ends without an error and `.venv/bin/python` exists. Every
+later command uses this interpreter; the examples write it as
+`$SIDERIUS/.venv/bin/python`, so set `SIDERIUS=/absolute/path/to/SIDERIUS`
+first. When the SIDERIUS 1.1.0 release tag is published, check out that tag
+instead of the commit. The checker records the SIDERIUS version and git
+revision it ran with in its report.
 
 ### 1. Design the task
 
@@ -77,16 +84,20 @@ galaxy_morphology/
   fetch_data.py
   task/                 task.yaml + declared/ + plugins/
   baseline/run_baseline.py
-  baseline/init_weights.safetensors   (or .pt)
-  baseline/final_weights.safetensors  (or .pt)
+  baseline/init_weights.pt
+  baseline/final_weights.pt
   baseline/baseline_result.json
 ```
 
 1. **Publish the data on Zenodo.** Upload the files, choose a license and
    publish. Public is preferred. If the data must stay restricted, publish it
-   as restricted and either create a *Can view* share link (record page,
-   **Share**, **Links**) or give the organizers' account access; see
-   [SPEC.md section 2](SPEC.md#2-data_sourcejson).
+   as restricted and do one of these:
+   - create a *Can view* secret link (record page, **Share**, **Links**) that
+     expires no earlier than 2026-12-31, and put it in `share_link`; or
+   - share the record with the organizers' Zenodo account and say so in
+     `access_note`.
+
+   See [SPEC.md section 2](SPEC.md#2-data_sourcejson).
 2. **Write `data_source.json`**: the record id and DOI from the Zenodo page,
    access, license, and each file's name, size in bytes and md5 checksum.
    Zenodo shows the md5 on the record page; locally, `md5sum FILE` and
@@ -105,7 +116,9 @@ galaxy_morphology/
 5. **Write and run the baseline.** `baseline/run_baseline.py` has two
    commands, `train` and `evaluate`, and computes scores with your task's own
    metric code ([SPEC.md section 4](SPEC.md#4-baseline)). Save the initial
-   weights, train with a fixed seed, save the final weights, then record the
+   weights, train with a fixed seed, save the final weights (both as PyTorch
+   state dicts with `torch.save(model.state_dict(), path)`; they must load with
+   `torch.load(path, weights_only=True)`), then record the
    scores, seed, hardware, run time and a reproduction tolerance in
    `baseline/baseline_result.json`. Optionally (a bonus), also provide the
    model as a SIDERIUS model plugin in `task/plugins/`, as the example does.
@@ -135,15 +148,18 @@ The checker prints one line per step and a verdict, for example:
 [PASS]  2b data_files: fetch_data.py downloaded and processed the Zenodo files: 2 file(s) in the data folder
 [PASS]  3a siderius_admission: init, add-task --manifest --no-gpu and check accepted task galaxy_morphology
 [PASS]  3b siderius_composition: composed: primary metric accuracy (higher), 1 secondary, Health declared
-[PASS] 4.0 baseline_weights: both weight files load as state dicts without executing code
+[PASS] 4.0 baseline_weights: both weight files load as state dicts with torch.load(weights_only=True)
 [PASS]  4a baseline_evaluate: evaluating the final weights reproduces every reported metric within its tolerance
 [PASS]  4b baseline_retrain: retraining with seed 20261104 reproduces every reported metric within its tolerance
 verdict: PASS  (zip sha256 <64 hex characters>, <size> bytes)
 ```
 
-Success: `verdict: PASS` and exit status 0. `SKIP` means a step did not run
-(its reason says which option enables it); it does not fail the check, but
-the organizers run every step. A `FAIL` line names the file or value to fix;
+Success: `verdict: PASS` and exit status 0. `SKIP` means a step did not run;
+its reason says which option enables it. If a required step (3a, 3b, 4.0 or
+4a) was skipped and nothing failed, the verdict is `INCOMPLETE` (exit status
+2): run again with `--siderius` and `--data_dir` or `--download`. Only 4b
+(retraining) may be skipped for a `PASS`, but the organizers run it too.
+A `FAIL` verdict (exit status 1) means a step failed; its line names the file or value to fix;
 `check-report.json` holds the full output of each step. The steps are
 described in [SPEC.md section 6](SPEC.md#6-checker).
 
@@ -223,3 +239,8 @@ $SIDERIUS/.venv/bin/python -m pytest tests
 ```
 
 The tests need no network and no SIDERIUS commands.
+
+## License
+
+MIT; see [LICENSE](LICENSE). The worked example's task package is adapted from
+MIT-licensed SIDERIUS code.
