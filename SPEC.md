@@ -235,11 +235,22 @@ byte-identical to the initial model.
 
 ### 4.4 Baseline environment: `baseline/requirements.txt`
 
-Optional. Each non-comment line is `name[extras]==version`, optionally with an
-environment marker (`numpy==2.4.3; python_version >= "3.12"`). Refused: any
-option line (`-e`, `-r`, `-c`, `--index-url`, `--extra-index-url`, ...), URLs
-and direct references (`pkg @ git+https://...`), local paths, and anything not
-pinned with `==` (no `>=`, no wildcards).
+Optional. **It applies only to `baseline/run_baseline.py`.** The task package
+in `task/` (data path, metrics, Health views, model plugin) runs in the SIDERIUS
+venv in step 3b and in Track 2, so its plugins may import only packages
+SIDERIUS installs.
+
+Each non-comment line is `name[extras]==version`, optionally with an
+environment marker (`numpy==2.4.3; python_version >= "3.12"`) written with the
+marker characters `A-Z a-z 0-9 _ . < > = ! ~ ' " ( )` and spaces. A comment
+starts at `#` after a space or tab. Refused: any whitespace-separated token
+starting with `-` anywhere on the line (`-e`, `-r`, `-c`, `--index-url`,
+`--extra-index-url`, also after a marker), URLs and direct references
+(`pkg @ git+https://...`), local paths, and anything not pinned with `==` (no
+`>=`, no wildcards). **Every pinned package and everything it depends on must
+be available as a wheel** for Linux x86_64 and the SIDERIUS Python (3.12):
+source-only packages are refused in step 4.1 because building them runs their
+setup code.
 
 - **Without the file**, the baseline runs with `<SIDERIUS>/.venv/bin/python`.
 - **With the file**, step 4.1 builds an isolated venv with
@@ -252,12 +263,22 @@ pinned with `==` (no `>=`, no wildcards).
      `uv.lock` as constraints, so shared packages (torch, numpy, pydantic, ...)
      keep SIDERIUS's locked versions;
   4. `uv venv --python <SIDERIUS>/.venv/bin/python` (same Python);
-  5. `uv pip install <siderius wheel> -r <validated pins> -c <constraints>`.
+  5. pass 1: `uv pip install <siderius wheel> -c <constraints>`. Only
+     SIDERIUS's own locked dependencies are installed here, and only they may
+     build from source (at 1ab94b51 `pylatexenc==2.10` has no wheel);
+  6. pass 2: `uv pip install --no-build -r <validated pins> -c <constraints>`.
+     The participant's pins and their transitive dependencies must be wheels;
+     a source-only package fails 4.1 with "has no wheel ... source builds are
+     not allowed".
 
-  A pin that conflicts with SIDERIUS's locked versions fails 4.1. `uv` runs
-  with the caller's environment (cache, index, proxy settings). The step
-  reports the resolved versions of the pinned packages, `siderius`, `torch`
-  and `numpy`.
+  A pin that conflicts with SIDERIUS's locked versions fails 4.1. Every uv
+  command runs with the same minimal environment as participant subprocesses
+  (private `HOME` and `TMPDIR`, proxy and `SSL_CERT_FILE` variables) plus only
+  the caller's `UV_*` variables and `PIP_INDEX_URL`, never the full caller
+  environment. When `UV_CACHE_DIR` is unset, the checker sets it to the
+  caller's uv cache (`uv cache dir`), so the private `HOME` does not force a
+  cold cache. The step reports the resolved versions of the pinned packages,
+  `siderius`, `torch` and `numpy`.
 - **Network**: building the venv downloads from the package index. A network
   failure makes 4.1 SKIP (and therefore 4a/4b SKIP and the verdict
   INCOMPLETE); a missing `uv` SKIPs too.
@@ -327,7 +348,7 @@ build from a folder; null when not measured), `zip_bytes`, the SIDERIUS
 | `3a` siderius_admission | in a private temporary folder: `candidate_console init --workspace ... --credential-file <mode-600 {}>`, `task/` copied to `tasks/<id>/`, processed data (or an empty folder) to `data/<id>/`, `add-task --config ... --manifest ... --task-id <id> --no-gpu`, `check --config ...` all exit 0 | no `--siderius`; not Linux |
 | `3b` siderius_composition | `workflows.task_composition.compose_run_task_bindings(task.yaml)` succeeds; reports primary/secondary metric ids and directions | no `--siderius` |
 | `4.0` baseline_model | every model artifact passes its section 4.3 format check; the final model differs from the initial model | final model or `baseline_result.json` missing/invalid; `.pt`/`.onnx` without `--siderius` |
-| `4.1` baseline_environment | no `requirements.txt` (SIDERIUS venv used), or the isolated venv of section 4.4 was built | no `--siderius`; invalid `requirements.txt` (step 1 fails); `uv` missing; network failure |
+| `4.1` baseline_environment | no `requirements.txt` (SIDERIUS venv used), or the isolated venv of section 4.4 was built (two passes; pins as wheels only) | no `--siderius`; invalid `requirements.txt` (step 1 fails); `uv` missing; network failure |
 | `4a` baseline_evaluate | `run_baseline.py evaluate --model <final model>` in the baseline environment exits 0 and its `metrics.json` keys equal the declared metric ids (from 3b) and the reported ones, each within tolerance | no `--siderius`, no environment from 4.1, no processed data from 2b, or invalid `baseline_result.json` |
 | `4b` baseline_retrain | with `--retrain`: `run_baseline.py train` with `seed` (and `--init_model` when present) exits 0, writes `final_model.<model_format>` (or `final_model/`), and its `metrics.json` passes the 4a comparison | no `--retrain`; same as 4a |
 

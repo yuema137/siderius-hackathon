@@ -461,7 +461,8 @@ def model_pair_problems(
 
 _REQUIREMENT = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?(?:\[[A-Za-z0-9._-]+(?:,[A-Za-z0-9._-]+)*\])?"
-    r"==[A-Za-z0-9][A-Za-z0-9.+!_-]*(?:\s*;\s*[^#]+)?"
+    r"==[A-Za-z0-9][A-Za-z0-9.+!_-]*"
+    r"(?:\s*;\s*[A-Za-z0-9_.<>=!~'\" ()]+)?"
 )
 
 
@@ -476,11 +477,11 @@ def requirements_problems(text: str) -> tuple[list[str], list[str]]:
     pins: list[str] = []
     problems: list[str] = []
     for number, raw in enumerate(text.splitlines(), start=1):
-        line = raw.split(" #", 1)[0].strip()
+        line = re.split(r"\s#", raw, maxsplit=1)[0].strip()
         if not line or line.startswith("#"):
             continue
         where = f"{REQUIREMENTS} line {number} ({line!r})"
-        if line.startswith("-"):
+        if any(token.startswith("-") for token in line.split()):
             problems.append(f"{where}: options such as -e, -r, -c and --index-url are not allowed")
         elif "://" in line or " @ " in line or line.startswith("@"):
             problems.append(f"{where}: URLs and direct references are not allowed; pin a released version")

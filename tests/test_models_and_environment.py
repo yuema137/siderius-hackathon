@@ -267,14 +267,26 @@ def test_invalid_requirements_fail_step_1(submission: Path) -> None:
 
 
 class FakeUv:
+    """Stands in for uv. ``fail_on``: a subcommand, ``install`` (pass 1) or ``pins`` (pass 2, --no-build)."""
+
     def __init__(self, fail_on: str | None = None, output: str = "") -> None:
         self.calls: list[list[str]] = []
+        self.envs: list[dict[str, str]] = []
         self.fail_on = fail_on
         self.output = output
 
-    def __call__(self, arguments: list[str], *, cwd: Path, timeout: float, tail_lines: int = 40) -> checker.Completed:
+    def __call__(
+        self, arguments: list[str], *, cwd: Path, timeout: float, env: dict[str, str], tail_lines: int = 40
+    ) -> checker.Completed:
         self.calls.append(arguments)
-        if arguments[0] == self.fail_on or (self.fail_on == "install" and arguments[:2] == ["pip", "install"]):
+        self.envs.append(env)
+        is_install = arguments[:2] == ["pip", "install"]
+        failing = (
+            arguments[0] == self.fail_on
+            or (self.fail_on == "install" and is_install and "--no-build" not in arguments)
+            or (self.fail_on == "pins" and is_install and "--no-build" in arguments)
+        )
+        if failing:
             return checker.Completed(["uv", *arguments], 1, timeout, self.output)
         if arguments[0] == "build":
             out = Path(arguments[arguments.index("--out-dir") + 1])
@@ -327,13 +339,26 @@ def test_requirements_build_an_isolated_venv_with_siderius_locked(submission: Pa
     assert step.status == "PASS", step.reason
     venv_python = ctx.work / "baseline-env" / "venv" / "bin" / "python"
     assert ctx.baseline_python == venv_python
-    assert [call[0] for call in fake.calls] == ["build", "export", "venv", "pip", "pip"]
+    assert [call[:2] for call in fake.calls] == [
+        ["build", "--wheel"],
+        ["export", "--frozen"],
+        ["venv", "--python"],
+        ["pip", "install"],
+        ["pip", "install"],
+        ["pip", "freeze"],
+    ]
     assert fake.calls[2] == ["venv", "--python", sys.executable, str(ctx.work / "baseline-env" / "venv")]
-    install = fake.calls[3]
-    assert install[:4] == ["pip", "install", "--python", str(venv_python)]
-    assert install[4].endswith("siderius-1.0.0-py3-none-any.whl") and "-e" not in install
-    assert install[install.index("-c") + 1].endswith("constraints.txt")
-    written = Path(install[install.index("-r") + 1]).read_text()
+    siderius_pass, pins_pass = fake.calls[3], fake.calls[4]
+    # pass 1: SIDERIUS wheel with its locked constraints; no participant pins, builds allowed
+    assert siderius_pass[:4] == ["pip", "install", "--python", str(venv_python)]
+    assert siderius_pass[4].endswith("siderius-1.0.0-py3-none-any.whl")
+    assert "-r" not in siderius_pass and "--no-build" not in siderius_pass and "-e" not in siderius_pass
+    assert siderius_pass[siderius_pass.index("-c") + 1].endswith("constraints.txt")
+    # pass 2: only the validated pins, wheels only
+    assert pins_pass[:5] == ["pip", "install", "--python", str(venv_python), "--no-build"]
+    assert not any(part.endswith(".whl") for part in pins_pass)
+    assert pins_pass[pins_pass.index("-c") + 1].endswith("constraints.txt")
+    written = Path(pins_pass[pins_pass.index("-r") + 1]).read_text()
     assert written == "scikit-learn==1.7.2\nskops==0.13.0\n"
     assert step.details["resolved_versions"] == {
         "scikit-learn": "1.7.2",
@@ -354,9 +379,9 @@ def test_network_failure_skips_and_makes_the_verdict_incomplete(submission: Path
 
 
 def test_resolution_conflict_fails(submission: Path, tmp_path: Path, fake_uv) -> None:
-    fake_uv(FakeUv(fail_on="install", output="No solution found when resolving dependencies: numpy==1.26.0"))
+    fake_uv(FakeUv(fail_on="pins", output="No solution found when resolving dependencies: numpy==1.26.0"))
     step = checker.step_environment(_env_ctx(submission, tmp_path, "numpy==1.26.0\n"))
-    assert step.status == "FAIL" and "installing SIDERIUS and baseline/requirements.txt" in step.reason
+    assert step.status == "FAIL" and "installing baseline/requirements.txt exited" in step.reason
 
 
 def test_missing_uv_or_invalid_requirements_skip(submission: Path, tmp_path: Path, fake_uv, monkeypatch) -> None:
@@ -408,3 +433,98 @@ def test_examples_pass_step_1_and_4_0(name: str, framework: str, has_init: bool,
 def test_parse_freeze_handles_direct_references() -> None:
     text = "a==1\nb @ file:///x/b-2.0-py3-none-any.whl\n# comment\n"
     assert checker.parse_freeze(text) == {"a": "1", "b": "b-2.0-py3-none-any.whl"}
+
+
+NO_WHEEL = (
+    "  x No solution found when resolving dependencies:\n"
+    "  hint: Wheels are required for `antlr4-python3-runtime` because building from source is disabled "
+    "for all packages (i.e., with `--no-build`)\n"
+)
+
+
+def test_source_only_pin_fails_with_a_clear_message(submission: Path, tmp_path: Path, fake_uv) -> None:
+    """A pin with no wheel must not be built (its setup.py would run); 4.1 FAILs and says why."""
+    fake = fake_uv(FakeUv(fail_on="pins", output=NO_WHEEL))
+    ctx = _env_ctx(submission, tmp_path, "antlr4-python3-runtime==4.9.3\n")
+    step = checker.step_environment(ctx)
+    assert step.status == "FAIL" and "has no wheel" in step.reason and "source builds are not allowed" in step.reason
+    assert "--no-build" in fake.calls[-1] and ctx.baseline_python is None
+
+
+def test_uv_runs_without_unrelated_caller_variables(
+    submission: Path, tmp_path: Path, fake_uv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name, value in {
+        "AWS_SECRET_ACCESS_KEY": "secret",
+        "OPENAI_API_KEY": "secret",
+        "GITHUB_TOKEN": "secret",
+        "UV_INDEX_URL": "https://mirror.example/simple",
+        "UV_CACHE_DIR": str(tmp_path / "cache"),
+        "PIP_INDEX_URL": "https://mirror.example/simple",
+        "HTTPS_PROXY": "http://proxy:3128",
+        "SSL_CERT_FILE": "/etc/ssl/cert.pem",
+    }.items():
+        monkeypatch.setenv(name, value)
+    fake = fake_uv(FakeUv())
+    ctx = _env_ctx(submission, tmp_path, "skops==0.13.0\n")
+    assert checker.step_environment(ctx).status == "PASS"
+    allowed = {
+        "PATH", "HOME", "LANG", "TMPDIR", "PYTHONDONTWRITEBYTECODE", "PYTHONHASHSEED", "PYTHONUNBUFFERED",
+        "CUDA_VISIBLE_DEVICES", "LC_ALL", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy",
+        "no_proxy", "SSL_CERT_FILE", "PIP_INDEX_URL",
+    }  # fmt: skip
+    for env in fake.envs:
+        unexpected = {name for name in env if name not in allowed and not name.startswith("UV_")}
+        assert unexpected == set()
+        assert env["UV_INDEX_URL"] == "https://mirror.example/simple" and env["HOME"] != str(Path.home())
+
+
+def test_uv_env_points_at_the_callers_cache_when_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("UV_CACHE_DIR", raising=False)
+    monkeypatch.setattr(checker, "default_uv_cache", lambda: "/home/someone/.cache/uv")
+    assert checker.uv_env(tmp_path)["UV_CACHE_DIR"] == "/home/someone/.cache/uv"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "numpy==2.4.3; python_version >= '3.12' --index-url https://evil.example/simple",
+        "numpy==2.4.3 ; os_name == 'posix' -e .",
+        "numpy==2.4.3; os_name == 'posix' --extra-index-url=https://evil.example",
+        "numpy==2.4.3; os_name == 'posix' \\",
+        "numpy==2.4.3; os_name == 'posix' and os_name == `x`",
+    ],
+)
+def test_options_or_odd_characters_after_a_marker_are_refused(line: str) -> None:
+    pins, problems = requirements_problems(line + "\n")
+    assert pins == [] and len(problems) == 1
+
+
+def test_tab_before_a_comment_is_allowed() -> None:
+    pins, problems = requirements_problems("skops==0.13.0\t# for the tree\n")
+    assert (pins, problems) == (["skops==0.13.0"], [])
+
+
+def test_deeply_nested_json_model_is_a_failure_not_a_crash(submission: Path) -> None:
+    set_baseline(submission, "xgboost", "json", init=False, final_content=b"[" * 200_000)
+    step = _model_step(submission)
+    assert step.status == "FAIL" and "nests too deeply" in step.reason
+
+
+@pytest.mark.parametrize(
+    ("framework", "fmt", "init", "wording"),
+    [
+        ("pytorch", "onnx", True, "onnx header only: onnx not installed; 4a is the real load test"),
+        ("tensorflow", "keras", True, "header-only check, not loaded; 4a is the real load test"),
+        ("sklearn", "pkl", False, "not loaded (pickle); 4a is the real load test"),
+        ("xgboost", "json", False, "JSON structure check only"),
+    ],
+)
+def test_model_step_says_how_deep_the_check_went(
+    submission: Path, framework: str, fmt: str, init: bool, wording: str
+) -> None:
+    set_baseline(submission, framework, fmt, init=init)
+    python = Path(sys.executable) if fmt == "onnx" else None
+    pytest.importorskip("torch") if fmt == "onnx" else None
+    step = _model_step(submission, python=python)
+    assert step.status == "PASS" and wording in step.reason, step.reason

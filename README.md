@@ -147,7 +147,12 @@ galaxy_morphology/
 
    If your baseline needs packages that SIDERIUS does not install (for example
    scikit-learn or Keras), list them in `baseline/requirements.txt`, one per
-   line with an exact version (`scikit-learn==1.7.2`).
+   line with an exact version (`scikit-learn==1.7.2`). Each package, and every
+   package it depends on, must be published as a wheel for Linux and Python
+   3.12; packages that only exist as source code are refused. These packages
+   are only for `run_baseline.py`: the task package in `task/` runs inside
+   SIDERIUS's own environment, so its plugins may import only packages that
+   SIDERIUS installs.
 
    Optionally (a bonus), also provide your model as a SIDERIUS model plugin in
    `task/plugins/`, as the examples do. The bonus must be PyTorch, because the

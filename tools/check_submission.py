@@ -651,8 +651,8 @@ def inspect_artifact(root: Path, artifact: ModelArtifact) -> tuple[list[str], st
     if fmt == "json":
         try:
             document = json.loads(path.read_bytes())
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return [f"{artifact.path} is not valid JSON"], "json"
+        except (ValueError, RecursionError):  # JSONDecodeError and UnicodeDecodeError are ValueErrors
+            return [f"{artifact.path} is not valid JSON (or nests too deeply to parse)"], "json"
         if not isinstance(document, dict) or "learner" not in document:
             return [f"{artifact.path} is not an XGBoost JSON model (no 'learner' key)"], "json"
         return [], "XGBoost JSON model"
@@ -720,9 +720,20 @@ def step_model(ctx: Context) -> Step:
     if problems:
         return Step("4.0", name, "FAIL", problems[0], details)
     pair = "initial and final model" if init is not None else "final model (no initial model for this framework)"
-    return Step(
-        "4.0", name, "PASS", f"{result.framework}/{result.model_format}: {pair} pass the format checks", details
-    )
+    fmt = result.model_format
+    if fmt == "pt":
+        depth = "loaded with torch.load(weights_only=True)"
+    elif fmt == "onnx" and details.get("loaded", {}).get("onnx", "not installed") != "not installed":
+        depth = "parsed by onnx.checker"
+    elif fmt == "onnx":
+        depth = "onnx header only: onnx not installed; 4a is the real load test"
+    elif fmt == "json":
+        depth = "JSON structure check only, not loaded; 4a is the real load test"
+    elif fmt in PICKLE_FORMATS:
+        depth = "not loaded (pickle); 4a is the real load test"
+    else:
+        depth = "header-only check, not loaded; 4a is the real load test"
+    return Step("4.0", name, "PASS", f"{result.framework}/{fmt}: {pair} pass the format checks ({depth})", details)
 
 
 # -- 4.1 baseline environment --------------------------------------------------
@@ -741,9 +752,41 @@ NETWORK_ERRORS = (
 )
 
 
-def run_uv(arguments: list[str], *, cwd: Path, timeout: float, tail_lines: int = OUTPUT_TAIL_LINES) -> Completed:
-    """Run uv, the checker's own trusted tool, with the caller's environment (cache, index, proxy)."""
-    return run(["uv", *arguments], cwd=cwd, timeout=timeout, env=dict(os.environ), tail_lines=tail_lines)
+#: Caller variables uv may see besides the minimal child environment.
+UV_PASSED_PREFIXES = ("UV_",)
+UV_PASSED_NAMES = ("PIP_INDEX_URL",)
+
+
+def default_uv_cache() -> str | None:
+    """The caller's uv cache folder, so a private HOME does not force a cold cache."""
+    try:
+        found = subprocess.run(["uv", "cache", "dir"], capture_output=True, text=True, timeout=60, check=True)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return found.stdout.strip() or None
+
+
+def uv_env(work: Path) -> dict[str, str]:
+    """The minimal child environment plus only uv/index/proxy/certificate settings.
+
+    Never the caller's full environment: SIDERIUS's locked dependencies may run
+    their build backends in the first install pass, and that code must not see
+    the caller's credentials.
+    """
+    env = child_env(work)
+    for name, value in os.environ.items():
+        if name.startswith(UV_PASSED_PREFIXES) or name in UV_PASSED_NAMES:
+            env[name] = value
+    if "UV_CACHE_DIR" not in env and (cache := default_uv_cache()) is not None:
+        env["UV_CACHE_DIR"] = cache
+    return env
+
+
+def run_uv(
+    arguments: list[str], *, cwd: Path, timeout: float, env: dict[str, str], tail_lines: int = OUTPUT_TAIL_LINES
+) -> Completed:
+    """Run uv, the checker's own tool, with the restricted environment from :func:`uv_env`."""
+    return run(["uv", *arguments], cwd=cwd, timeout=timeout, env=env, tail_lines=tail_lines)
 
 
 def parse_freeze(text: str) -> dict[str, str]:
@@ -838,22 +881,44 @@ def step_environment(ctx: Context) -> Step:
         ),
         ("creating the venv", ["venv", "--python", str(ctx.python), str(venv)]),
     ]
+    env = uv_env(ctx.work)
     for what, arguments in commands:
-        done = run_uv(arguments, cwd=base, timeout=timeout)
+        done = run_uv(arguments, cwd=base, timeout=timeout, env=env)
         if done.returncode != 0:
             return _uv_failure(name, what, done, details)
     built = sorted(wheels.glob("*.whl"))
     if len(built) != 1:
         return Step("4.1", name, "FAIL", f"expected one SIDERIUS wheel, found {[p.name for p in built]}", details)
     python = venv / "bin" / "python"
+    # Pass 1: SIDERIUS and its locked dependencies; only these may build from source.
     done = run_uv(
-        ["pip", "install", "--python", str(python), str(built[0]), "-r", str(pins), "-c", str(constraints)],
+        ["pip", "install", "--python", str(python), str(built[0]), "-c", str(constraints)],
         cwd=base,
         timeout=timeout,
+        env=env,
     )
     if done.returncode != 0:
-        return _uv_failure(name, "installing SIDERIUS and baseline/requirements.txt", done, details)
-    freeze = run_uv(["pip", "freeze", "--python", str(python)], cwd=base, timeout=timeout, tail_lines=10_000)
+        return _uv_failure(name, "installing SIDERIUS with its locked versions", done, details)
+    # Pass 2: the participant's pins and everything they pull in must be wheels.
+    done = run_uv(
+        ["pip", "install", "--python", str(python), "--no-build", "-r", str(pins), "-c", str(constraints)],
+        cwd=base,
+        timeout=timeout,
+        env=env,
+    )
+    if done.returncode != 0:
+        if "no-build" in done.output_tail or "building from source is disabled" in done.output_tail:
+            details["output_tail"] = done.output_tail
+            return Step(
+                "4.1",
+                name,
+                "FAIL",
+                "a package in baseline/requirements.txt (or one of its dependencies) has no wheel for this "
+                "platform and Python; source builds are not allowed. Pin a version published as a wheel",
+                details,
+            )
+        return _uv_failure(name, "installing baseline/requirements.txt", done, details)
+    freeze = run_uv(["pip", "freeze", "--python", str(python)], cwd=base, timeout=timeout, env=env, tail_lines=10_000)
     versions = parse_freeze(freeze.output_tail) if freeze.returncode == 0 else {}
     wanted = {pin.split("==", 1)[0].split("[", 1)[0].lower().replace("_", "-") for pin in ctx.static.requirements}
     details["resolved_versions"] = {
