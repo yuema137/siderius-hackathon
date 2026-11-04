@@ -23,6 +23,9 @@ free research data archive that gives every dataset a permanent DOI.
 - **A Zenodo account** to publish your data.
 - **A GPU only if your baseline needs one.** No API keys are needed: the
   checker never calls a language model.
+- **Network access and disk space** if your baseline needs extra packages
+  (`baseline/requirements.txt`): the checker then builds a separate Python
+  environment, which can download several GB the first time (see step 3).
 
 ## What is in this kit
 
@@ -30,7 +33,7 @@ free research data archive that gives every dataset a permanent DOI.
 | --- | --- |
 | [SPEC.md](SPEC.md) | The exact rules: layout, file formats, size limits, every check. Your coding agent reads this. |
 | [templates/TASK_CARD.md](templates/TASK_CARD.md) | The task card to fill in, with guidance under each heading. |
-| [examples/quickstart_classification/](examples/quickstart_classification/) | A complete submission to copy from. It passes every check except 2a (the Zenodo record) until the organizers publish its data and fill in the record id. |
+| [examples/](examples/) | Three complete submissions of the same task to copy from: a PyTorch MLP, a scikit-learn decision tree and a Keras MLP. Each passes every check except 2a (the Zenodo record) until the organizers publish the data and fill in the record id. |
 | `tools/check_submission.py` | The self-check. Run it before every upload. |
 | `tools/make_submission.py` | Builds the upload zip and prints its checksum. |
 | [skills/track1-task-check/SKILL.md](skills/track1-task-check/SKILL.md) | Instructions for a coding agent (Claude Code, Codex) helping you check and improve your task. |
@@ -75,7 +78,7 @@ you go. The card's sections are listed in [SPEC.md section 5](SPEC.md#5-task_car
 
 Create a folder named after your task id (letters, digits, `-`, `_`), for
 example `galaxy_morphology/`, with this content. The fastest start is to copy
-the worked example and change it.
+the worked example closest to your model and change it.
 
 ```
 galaxy_morphology/
@@ -84,8 +87,9 @@ galaxy_morphology/
   fetch_data.py
   task/                 task.yaml + declared/ + plugins/
   baseline/run_baseline.py
-  baseline/init_weights.pt
-  baseline/final_weights.pt
+  baseline/final_model.<format>      the trained baseline model
+  baseline/init_model.<format>       neural networks only: the model before training
+  baseline/requirements.txt          optional: extra packages, pinned with ==
   baseline/baseline_result.json
 ```
 
@@ -113,18 +117,41 @@ galaxy_morphology/
    for anything else, follow the SIDERIUS
    [task definition guide](https://github.com/yuema137/SIDERIUS/blob/master/docs/guides/define-a-task.md).
    A coding agent opened in your SIDERIUS checkout can write it with you.
-5. **Write and run the baseline.** `baseline/run_baseline.py` has two
-   commands, `train` and `evaluate`, and computes scores with your task's own
-   metric code ([SPEC.md section 4](SPEC.md#4-baseline)). Save the initial
-   weights, train with a fixed seed, save the final weights (both as PyTorch
-   state dicts with `torch.save(model.state_dict(), path)`; they must load with
-   `torch.load(path, weights_only=True)`), then record the
-   scores, seed, hardware, run time and a reproduction tolerance in
-   `baseline/baseline_result.json`. Optionally (a bonus), also provide the
-   model as a SIDERIUS model plugin in `task/plugins/`, as the example does.
+5. **Write and run the baseline.** The baseline shows the task is solvable
+   and sets the score to beat. Use any of these frameworks; the file name is
+   always `final_model.<format>`:
+
+   | Framework | Recommended format | Also allowed |
+   | --- | --- | --- |
+   | PyTorch | `.pt` (a `state_dict` saved with `torch.save`) | `.onnx` |
+   | TensorFlow / Keras | `.keras` | `.weights.h5`, SavedModel folder `final_model/`, `.onnx` |
+   | XGBoost | `.json`, `.ubj` | |
+   | LightGBM | `.txt` | |
+   | CatBoost | `.cbm` | |
+   | scikit-learn | `.skops` | `.joblib`, `.pkl` (discouraged: loading them runs code) |
+
+   `baseline/run_baseline.py` has two commands, `train` and `evaluate`, and
+   computes scores with your task's own metric code
+   ([SPEC.md section 4](SPEC.md#4-baseline)). Train with a fixed seed and save
+   the final model. For a neural network (PyTorch, TensorFlow/Keras), also save
+   the model before training as `init_model.<format>`, so training can be
+   repeated from the same start; other models are repeated from the seed and
+   the hyperparameters alone. Record the framework, format, hyperparameters,
+   seed, scores, hardware, run time and a reproduction tolerance in
+   `baseline/baseline_result.json`.
+
+   If your baseline needs packages that SIDERIUS does not install (for example
+   scikit-learn or Keras), list them in `baseline/requirements.txt`, one per
+   line with an exact version (`scikit-learn==1.7.2`).
+
+   Optionally (a bonus), also provide your model as a SIDERIUS model plugin in
+   `task/plugins/`, as the examples do. The bonus must be PyTorch, because the
+   SIDERIUS trainer is PyTorch; the required baseline above can use any
+   framework in the table.
 
 Data files never go in the folder: data arrays and tables (`.npy`, `.npz`,
-`.h5`, `.parquet`, `.pkl`, `.feather`) are refused outside `baseline/`. Each
+`.h5`, `.parquet`, `.pkl`, `.feather`) are refused, and `baseline/` holds only
+the model files plus small `.py`, `.json`, `.yaml`, `.txt` and `.md` files. Each
 file must be at most 5 MB and the zip at most 20 MB.
 
 ### 3. Check it
@@ -137,8 +164,16 @@ $SIDERIUS/.venv/bin/python tools/check_submission.py /absolute/path/galaxy_morph
 ```
 
 Use `--data_dir DIR` instead of `--download` if the Zenodo files are already
-on disk in `DIR`. `--retrain` retrains your baseline from the initial weights,
-so it takes as long as your training; leave it out for a quick check.
+on disk in `DIR`. `--retrain` retrains your baseline, so it takes as long as
+your training; leave it out for a quick check.
+
+If you have `baseline/requirements.txt`, the checker builds a separate Python
+environment for your baseline with uv: SIDERIUS (with its own locked package
+versions) plus your pinned packages. This needs network access. The first time,
+uv downloads SIDERIUS's dependencies, mostly PyTorch and its CUDA libraries
+(several GB; the environment takes about 7.6 GB of disk); later runs reuse uv's
+cache and take seconds. Without the file, your baseline runs in the SIDERIUS
+environment directly.
 
 The checker prints one line per step and a verdict, for example:
 
@@ -148,16 +183,18 @@ The checker prints one line per step and a verdict, for example:
 [PASS]  2b data_files: fetch_data.py downloaded and processed the Zenodo files: 2 file(s) in the data folder
 [PASS]  3a siderius_admission: init, add-task --manifest --no-gpu and check accepted task galaxy_morphology
 [PASS]  3b siderius_composition: composed: primary metric accuracy (higher), 1 secondary, Health declared
-[PASS] 4.0 baseline_weights: both weight files load as state dicts with torch.load(weights_only=True)
-[PASS]  4a baseline_evaluate: evaluating the final weights reproduces every reported metric within its tolerance
-[PASS]  4b baseline_retrain: retraining with seed 20261104 reproduces every reported metric within its tolerance
+[PASS] 4.0 baseline_model: pytorch/pt: initial and final model pass the format checks
+[PASS] 4.1 baseline_environment: no baseline/requirements.txt: the baseline runs in the SIDERIUS venv
+[PASS]  4a baseline_evaluate: evaluating the final model reproduces every reported metric within its tolerance
+[PASS]  4b baseline_retrain: retraining with seed 20261104 from the initial model reproduces every reported metric within its tolerance
 verdict: PASS  (zip sha256 <64 hex characters>, <size> bytes)
 ```
 
 Success: `verdict: PASS` and exit status 0. `SKIP` means a step did not run;
-its reason says which option enables it. If a required step (3a, 3b, 4.0 or
-4a) was skipped and nothing failed, the verdict is `INCOMPLETE` (exit status
-2): run again with `--siderius` and `--data_dir` or `--download`. Only 4b
+its reason says which option enables it. If a required step (3a, 3b, 4.0,
+4.1 or 4a) was skipped and nothing failed, the verdict is `INCOMPLETE` (exit status
+2): run again with `--siderius` and `--data_dir` or `--download`, and with
+network access if you have `baseline/requirements.txt`. Only 4b
 (retraining) may be skipped for a `PASS`, but the organizers run it too.
 A `FAIL` verdict (exit status 1) means a step failed; its line names the file or value to fix;
 `check-report.json` holds the full output of each step. The steps are
@@ -191,12 +228,19 @@ Upload the zip at `PORTAL_URL`. Keep the sha256 the tool printed; the portal's
 receipt shows the sha256 it received, and the two should match. You can upload
 new versions until the deadline; the latest counts.
 
-## The worked example
+## The worked examples
 
-[examples/quickstart_classification/](examples/quickstart_classification/) is
-the SIDERIUS quickstart task (classify 256 synthetic rows with four features
-into two classes) turned into a submission. Read its
-[TASK_CARD.md](examples/quickstart_classification/TASK_CARD.md) first.
+[examples/](examples/) holds the SIDERIUS quickstart task (classify 256
+synthetic rows with four features into two classes) as three submissions that
+differ only in `baseline/`:
+
+| Example | Baseline | Files in `baseline/` |
+| --- | --- | --- |
+| [quickstart_classification](examples/quickstart_classification/) | PyTorch MLP | `init_model.pt`, `final_model.pt`; no `requirements.txt` |
+| [quickstart_classification_sklearn](examples/quickstart_classification_sklearn/) | scikit-learn decision tree | `final_model.skops` only; `requirements.txt` pins scikit-learn and skops |
+| [quickstart_classification_keras](examples/quickstart_classification_keras/) | Keras MLP (Keras 3 on its PyTorch backend) | `init_model.keras`, `final_model.keras`; `requirements.txt` pins keras |
+
+Read [the PyTorch example's TASK_CARD.md](examples/quickstart_classification/TASK_CARD.md) first.
 
 Its four data files are generated, not downloaded. Until the organizers
 publish them on Zenodo, its `data_source.json` holds the placeholder record id
@@ -217,9 +261,13 @@ $SIDERIUS/.venv/bin/python tools/check_submission.py examples/quickstart_classif
   --siderius $SIDERIUS --data_dir /absolute/path/example-data --retrain
 ```
 
+Replace `quickstart_classification` with `quickstart_classification_sklearn` or
+`quickstart_classification_keras` to check the others; those two build the
+separate baseline environment described in step 3.
+
 The generator prints the SHA-256 of `shard_0000.csv` to `shard_0003.csv`.
 After the upload, the organizers replace `ZENODO_RECORD_ID` in
-`data_source.json` and `TASK_CARD.md` with the record id.
+`data_source.json` and `TASK_CARD.md` of each example with the record id.
 
 ## Where each choice lives
 
@@ -229,8 +277,9 @@ After the upload, the organizers replace `ZENODO_RECORD_ID` in
 | Data location, access, checksums | `data_source.json` |
 | How raw files become the data folder | `fetch_data.py` |
 | Data reading, splits, model input/output, metric, Health checks, parameter limits | `task/task.yaml` and the files it names |
-| Baseline model and training recipe | `baseline/run_baseline.py` (and the optional model plugin in `task/plugins/`) |
-| Reported scores, seed, tolerance, hardware | `baseline/baseline_result.json` |
+| Baseline model and training recipe | `baseline/run_baseline.py` (and the optional PyTorch model plugin in `task/plugins/`) |
+| Extra packages the baseline needs | `baseline/requirements.txt` |
+| Framework, model format, hyperparameters, seed, reported scores, tolerance, hardware | `baseline/baseline_result.json` |
 
 ## Running the kit's tests
 
@@ -242,5 +291,5 @@ The tests need no network and no SIDERIUS commands.
 
 ## License
 
-MIT; see [LICENSE](LICENSE). The worked example's task package is adapted from
+MIT; see [LICENSE](LICENSE). The worked examples' task package is adapted from
 MIT-licensed SIDERIUS code.

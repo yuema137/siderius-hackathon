@@ -51,10 +51,14 @@ mean) scores, so readers can judge the baseline.
 ## Baseline
 
 <!--
-Method (model, input features, training recipe), the score on the evaluation
-split for every declared metric (copy from baseline/baseline_result.json),
-the seed, the hardware and wall time to train and to evaluate, and whether it
-needs a GPU. Mention the bonus SIDERIUS model plugin if you provide one.
+Method: framework (PyTorch, TensorFlow/Keras, scikit-learn, XGBoost,
+LightGBM, CatBoost or other), model, input features, training recipe and
+hyperparameters; the model file format (final_model.<format>, and
+init_model.<format> for neural networks) and any extra packages in
+baseline/requirements.txt. Then the score on the evaluation split for every
+declared metric (copy from baseline/baseline_result.json), the seed, the
+hardware and wall time to train and to evaluate, and whether it needs a GPU.
+Mention the bonus SIDERIUS model plugin if you provide one (PyTorch only).
 -->
 
 ## Novelty
