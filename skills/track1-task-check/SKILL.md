@@ -25,8 +25,8 @@ Two kinds of output, never mixed:
    portal assigned (`t1-NNN`, passed as `--task_id`; the folder name is not the
    task id, and without `--task_id` the checker uses a labelled local working id), the SIDERIUS checkout
    (`--siderius`: <https://github.com/yuema137/SIDERIUS> v1.1.0 or later; the
-   minimum is `MIN_SIDERIUS` in `tools/submission_rules.py`, commit
-   `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de` until the tag exists; step 3.0
+   minimum is `MIN_SIDERIUS` in `tools/submission_rules.py`, set to the
+   release tag `v1.1.0`; step 3.0
    enforces it; with `.venv/bin/python` from `uv sync --group dev --frozen`) and where the data is: already downloaded
    (`--data_dir`) or to be downloaded (`--download`). Ask only for what you
    cannot find; reuse paths the author already gave.
@@ -41,8 +41,8 @@ Two kinds of output, never mixed:
    `--download` downloads the whole Zenodo record.
 5. If `baseline/requirements.txt` exists, step 4.1 builds an isolated uv venv
    (SIDERIUS non-editable with its locked versions, plus the pins). It needs
-   network access and, with a cold uv cache, several GB of downloads and about
-   7.6 GB of disk (SPEC.md section 4.4). Tell the author before running it; in
+   network access and, with a cold uv cache, several GB of downloads and disk
+   space (SPEC.md section 4.4). Tell the author before running it; in
    an offline sandbox 4.1 SKIPs and the verdict is `INCOMPLETE`, which is an
    environment limitation, not a pass.
 

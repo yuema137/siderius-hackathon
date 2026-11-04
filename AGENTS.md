@@ -70,13 +70,12 @@ free research data archive that gives every dataset a permanent DOI.
 ```bash
 git clone https://github.com/yuema137/SIDERIUS.git
 cd SIDERIUS
-git checkout 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de   # minimum SIDERIUS; at release: git checkout v1.1.0
+git checkout v1.1.0
 uv sync --group dev --frozen
 ```
 
-Until the v1.1.0 release tag is published, the minimum is that commit; at
-release the requirement becomes "v1.1.0 or later" and step 0 checks out
-`v1.1.0`. Any later revision also works. The checker enforces the minimum: its
+The minimum is SIDERIUS v1.1.0; step 0 checks out that release tag.
+Later revisions that include v1.1.0 also work. The checker enforces the minimum: its
 step 3.0 fails when your checkout's history does not contain it (run
 `git fetch --tags` if the checker says the revision is unknown). It also
 records the SIDERIUS version and git revision it ran with in its report.
@@ -213,8 +212,8 @@ If you have `baseline/requirements.txt`, the checker builds a separate Python
 environment for your baseline with uv: SIDERIUS (with its own locked package
 versions) plus your pinned packages. This needs network access. The first time,
 uv downloads SIDERIUS's dependencies, mostly PyTorch and its CUDA libraries
-(several GB; the environment takes about 7.6 GB of disk); later runs reuse uv's
-cache and take seconds. Without the file, your baseline runs in the SIDERIUS
+(several GB); later runs can reuse uv's cache. Build time and disk use depend
+on the machine, cache and package versions. Without the file, your baseline runs in the SIDERIUS
 environment directly.
 
 The checker prints one line per step and a verdict, for example:
@@ -224,7 +223,7 @@ task id: t1-007 (portal-assigned task id); folder: galaxy_morphology
 [PASS]   1 package: layout, sizes, file types, card and JSON schemas are valid
 [PASS]  2a zenodo_record: record 1234567 found; declared files match Zenodo's names, sizes and md5
 [PASS]  2b data_files: fetch_data.py downloaded and processed the Zenodo files: 2 file(s) in the data folder
-[PASS] 3.0 siderius_version: SIDERIUS 1.0.0 at 1ab94b5101f7 includes 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de
+[PASS] 3.0 siderius_version: SIDERIUS 1.1.0 at 5ccb436f88e6 includes v1.1.0
 [PASS]  3a siderius_admission: init, add-task --manifest --task-id t1-007 --no-gpu and check accepted the task
 [PASS]  3b siderius_composition: composed: primary metric accuracy (higher), 1 secondary, Health declared
 [PASS] 4.0 baseline_model: pytorch/pt: initial and final model pass the format checks

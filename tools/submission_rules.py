@@ -23,9 +23,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictFloat, ValidationError,
 KIT_VERSION = "1.0.0"
 
 #: Oldest SIDERIUS a submission may be built and checked with (a git ref that must
-#: be an ancestor of the --siderius checkout's HEAD). Until the v1.1.0 tag exists
-#: this is the pinned commit; at release change this one line to "v1.1.0".
-MIN_SIDERIUS = "1ab94b5101f705f2bd90ba89a21fd10bb2ed98de"
+#: be an ancestor of the --siderius checkout's HEAD).
+MIN_SIDERIUS = "v1.1.0"
 
 MAX_ZIP_BYTES = 20 * 1024 * 1024
 MAX_FILE_BYTES = 5 * 1024 * 1024

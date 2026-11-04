@@ -10,9 +10,8 @@ the disagreement is a defect to report. Kit version 1.0.0.
 A submission is a **task package only**: a scientific ML task that SIDERIUS can
 run in Track 2. Submissions must be built and checked with SIDERIUS
 (<https://github.com/yuema137/SIDERIUS>) **v1.1.0 or later**. The minimum is the
-single constant `MIN_SIDERIUS` in `tools/submission_rules.py`, a git ref: until
-the `v1.1.0` tag exists it is commit `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de`
-(whose `pyproject.toml` still says 1.0.0); at release it becomes `v1.1.0`.
+single constant `MIN_SIDERIUS` in `tools/submission_rules.py`, set to the git
+tag `v1.1.0`. Installation step 0 in AGENTS.md checks out that tag.
 Step 3.0 enforces it; the report records the checkout's version and revision.
 A submission contains no workflow, no data and no credentials; the data lives
 on Zenodo.
@@ -200,6 +199,11 @@ Pydantic model `BaselineResult` (`extra="forbid"`):
 | `wall_time` | `{train_seconds, evaluate_seconds}` | >= 0 |
 | `framework_versions` | `{name: version}` | >= 1 entry, for example `python`, `torch`, `scikit-learn`, `siderius` (version or git revision) |
 
+`framework_versions` records the software used to produce the saved baseline.
+The checker does not compare its SIDERIUS entry against `MIN_SIDERIUS`; step
+3.0 checks the checkout used for the current validation. Preserve historical
+provenance when rechecking an existing baseline on a newer release.
+
 The same tolerance applies to evaluating the final model (4a) and to
 retraining (4b). Choose it to cover nondeterminism of your hardware (GPU
 kernels, thread count); 0 is valid for a deterministic CPU baseline.
@@ -223,7 +227,7 @@ Step 4.0 checks each artifact without executing participant objects:
 | Format | Check |
 | --- | --- |
 | `pt` | a `torch.save` zip archive; then, with `--siderius`, `torch.load(path, map_location="cpu", weights_only=True)` in a `python -I` subprocess must return a non-empty flat `{name: tensor}` state dict |
-| `onnx` | first byte `0x08` (ModelProto `ir_version`); with `--siderius`, `onnx.checker.check_model` in a subprocess only if `onnx` is installed in the SIDERIUS venv (it is not at 1ab94b51; then the header check is all) |
+| `onnx` | first byte `0x08` (ModelProto `ir_version`); with `--siderius`, `onnx.checker.check_model` in a subprocess only if `onnx` is installed in the SIDERIUS venv (otherwise only the header is checked) |
 | `keras` | a valid zip whose directory lists `config.json` and `model.weights.h5`; not loaded |
 | `weights.h5` | HDF5 signature `\x89HDF\r\n\x1a\n`; not loaded |
 | `savedmodel` | `saved_model.pb` present and non-empty; not loaded |
@@ -269,7 +273,7 @@ setup code.
   4. `uv venv --python <SIDERIUS>/.venv/bin/python` (same Python);
   5. pass 1: `uv pip install <siderius wheel> -c <constraints>`. Only
      SIDERIUS's own locked dependencies are installed here, and only they may
-     build from source (at 1ab94b51 `pylatexenc==2.10` has no wheel);
+     build from source;
   6. pass 2: `uv pip install --no-build -r <validated pins> -c <constraints>`.
      The participant's pins and their transitive dependencies must be wheels;
      a source-only package fails 4.1 with "has no wheel ... source builds are
@@ -286,12 +290,11 @@ setup code.
 - **Network**: building the venv downloads from the package index. A network
   failure makes 4.1 SKIP (and therefore 4a/4b SKIP and the verdict
   INCOMPLETE); a missing `uv` SKIPs too.
-- **Cost**: with a warm uv cache on the same filesystem the venv builds in
-  seconds (measured: about 1 s for the install, about 25 s for the whole
-  check of the scikit-learn example) and its files are hard links into the
+- **Cost**: with a warm uv cache on the same filesystem, uv can reuse
+  cached files through hard links. Build time depends on the machine and
   cache. With a cold cache uv downloads SIDERIUS's full dependency set,
-  dominated by PyTorch and its CUDA libraries (several GB; the installed venv
-  occupies about 7.6 GB, measured at 1ab94b51), plus your pins. Budget minutes
+  dominated by PyTorch and its CUDA libraries (several GB), plus your pins.
+  Budget minutes
   and disk accordingly; the `--env_timeout` default is 3600 s.
 
 ## 5. `TASK_CARD.md`
@@ -360,9 +363,8 @@ build from a folder; null when not measured), `zip_bytes`, the SIDERIUS
 Facts the steps rely on:
 
 - `add-task` and `check` (3a) validate the console entry, folders and
-  permissions; they do not compose the manifest or load plugins (a manifest
-  naming a non-existent metric symbol passes them; verified at SIDERIUS
-  1ab94b51). Step 3b closes that gap with the composer SIDERIUS runs use.
+  permissions. Step 3b separately verifies manifest composition and plugin
+  loading with the composer SIDERIUS runs use.
 - 3a does not start the bubblewrap run sandbox. The report records whether
   `bwrap` is usable on the machine; Track 2 runs need it.
 - PASS on 2b, 4a and 4b means the participant's scripts ran and produced
