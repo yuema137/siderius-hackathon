@@ -247,7 +247,7 @@ def step_package(
     if zip_bytes_size is None:
         notes.append("zip size not measured (the zip was not built or not read)")
     elif zip_bytes_size > MAX_ZIP_BYTES:
-        problems.append(f"the zip is {zip_bytes_size} bytes; the limit is {MAX_ZIP_BYTES} (20 MB)")
+        problems.append(f"the zip is {zip_bytes_size} bytes; the limit is {MAX_ZIP_BYTES} (20 MiB)")
     details = {
         "folder": folder,
         "files": len(static.files) if static is not None else None,
@@ -1153,7 +1153,7 @@ def _open_zip(path: Path, work: Path) -> OpenedInput:
     try:
         digest = _sha256_file(path)
         if size > MAX_ZIP_BYTES:
-            problem = f"the zip is {size} bytes; the limit is {MAX_ZIP_BYTES} (20 MB); not unpacked"
+            problem = f"the zip is {size} bytes; the limit is {MAX_ZIP_BYTES} (20 MiB); not unpacked"
             return OpenedInput(None, None, size, digest, [problem])
         with zipfile.ZipFile(path) as archive:
             task_id, problems = zip_member_problems(archive)

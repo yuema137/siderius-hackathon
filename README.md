@@ -167,7 +167,7 @@ galaxy_morphology/
 Data files never go in the folder: data arrays and tables (`.npy`, `.npz`,
 `.h5`, `.parquet`, `.pkl`, `.feather`) are refused, and `baseline/` holds only
 the model files plus small `.py`, `.json`, `.yaml`, `.txt` and `.md` files. Each
-file must be at most 5 MB and the zip at most 20 MB.
+file must be at most 5 MiB and the zip at most 20 MiB.
 
 ### 3. Check it
 

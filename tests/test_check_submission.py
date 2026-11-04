@@ -118,7 +118,7 @@ def test_zip_over_20_mb_fails_step_1(submission: Path) -> None:
     static = check_static(submission)
     assert checker.step_package(submission.name, static, MAX_ZIP_BYTES, []).status == "PASS"
     step = checker.step_package(submission.name, static, MAX_ZIP_BYTES + 1, [])
-    assert step.status == "FAIL" and "20 MB" in step.reason
+    assert step.status == "FAIL" and "20 MiB" in step.reason
 
 
 # -- TASK_CARD.md -----------------------------------------------------------------
@@ -469,7 +469,7 @@ def _unpacked_bytes(work: Path) -> int:
 
 
 def test_highly_compressed_oversized_member_is_never_unpacked(tmp_path: Path) -> None:
-    """A small zip declaring a member above 5 MB is refused before any byte is written."""
+    """A small zip declaring a member above 5 MiB is refused before any byte is written."""
     upload = _write_zip(tmp_path / "t.zip", {"t/big.csv": b"0" * (MAX_FILE_BYTES + 1)})
     assert upload.stat().st_size < 100_000
     work = tmp_path / "work"
@@ -533,7 +533,7 @@ def test_folder_with_oversized_file_is_not_read_into_a_zip(submission: Path, mon
     (submission / "task" / "huge.csv").write_bytes(b"0" * (MAX_FILE_BYTES + 1))
 
     def refuse(*_: object) -> bytes:
-        raise AssertionError("build_zip_bytes must not run when a file exceeds 5 MB")
+        raise AssertionError("build_zip_bytes must not run when a file exceeds 5 MiB")
 
     monkeypatch.setattr(checker, "build_zip_bytes", refuse)
     report = checker.check(checker.parse_args([str(submission)]), fetch=_stub(404, None)[0])
@@ -765,4 +765,3 @@ def test_unknown_minimum_ref_fails_with_fetch_advice(history, monkeypatch: pytes
 def test_non_git_checkout_fails(tmp_path: Path) -> None:
     step = checker.step_siderius_version(tmp_path, None)
     assert step.status == "FAIL" and "not a git checkout" in step.reason
-

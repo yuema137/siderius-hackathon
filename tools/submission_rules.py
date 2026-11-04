@@ -382,7 +382,7 @@ def file_rule_problems(relative: str, size: int) -> list[str]:
     suffixes = {s.lower() for s in path.suffixes}
     top = path.parts[0] if path.parts else ""
     if size > MAX_FILE_BYTES:
-        problems.append(f"{relative} is {size} bytes; the limit per file is {MAX_FILE_BYTES} (5 MB)")
+        problems.append(f"{relative} is {size} bytes; the limit per file is {MAX_FILE_BYTES} (5 MiB)")
     if suffixes & ARCHIVE_SUFFIXES:
         problems.append(f"{relative} is an archive; archives are not allowed inside a submission")
     if top != "baseline":
@@ -686,7 +686,7 @@ def zip_member_problems(archive: zipfile.ZipFile) -> tuple[str | None, list[str]
         problems.append(f"the zip must contain exactly one top folder; found {sorted(tops)}")
         return None, problems
     if total > MAX_EXPANDED_BYTES:
-        problems.append(f"the zip declares {total} bytes when unpacked; the limit is {MAX_EXPANDED_BYTES} (200 MB)")
+        problems.append(f"the zip declares {total} bytes when unpacked; the limit is {MAX_EXPANDED_BYTES} (200 MiB)")
     return tops.pop(), problems
 
 

@@ -39,7 +39,7 @@ def make(task_dir: Path, output_dir: Path, task_id: str | None = None) -> tuple[
     """Write ``output_dir/<task_id or folder name>.zip``; returns ``(path, bytes, sha256)``.
 
     Raises:
-        ValueError: step 1 fails, the zip exceeds 20 MB, or the output exists.
+        ValueError: step 1 fails, the zip exceeds 20 MiB, or the output exists.
     """
     root = task_dir.resolve()
     static = check_static(root)
@@ -47,7 +47,7 @@ def make(task_dir: Path, output_dir: Path, task_id: str | None = None) -> tuple[
         raise ValueError("step 1 refuses this folder:\n  - " + "\n  - ".join(static.problems))
     payload = build_zip_bytes(root, static.files)
     if len(payload) > MAX_ZIP_BYTES:
-        raise ValueError(f"the zip would be {len(payload)} bytes; the limit is {MAX_ZIP_BYTES} (20 MB)")
+        raise ValueError(f"the zip would be {len(payload)} bytes; the limit is {MAX_ZIP_BYTES} (20 MiB)")
     if task_id is not None and (problem := portal_task_id_problem(task_id)) is not None:
         raise ValueError(problem)
     target = output_dir.resolve() / f"{task_id or root.name}.zip"

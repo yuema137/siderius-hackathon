@@ -74,8 +74,8 @@ A TensorFlow SavedModel is a folder: `baseline/final_model/` holding
 
 | Rule | Value |
 | --- | --- |
-| zip size | <= 20 MB (20,971,520 bytes) |
-| any single file (uncompressed) | <= 5 MB (5,242,880 bytes); equal passes |
+| zip size | <= 20 MiB (20,971,520 bytes) |
+| any single file (uncompressed) | <= 5 MiB (5,242,880 bytes); equal passes |
 | data arrays/tables `.npz .npy .h5 .hdf5 .parquet .pkl .pickle .feather` | refused outside `baseline/` |
 | model-like files `.safetensors .pt .pth .ckpt .bin .onnx .keras .joblib .skops .cbm .ubj .pb` | refused outside `baseline/` |
 | `baseline/` content | only the model artifacts `init_model.<format>` / `final_model.<format>` (or the SavedModel folders `init_model/`, `final_model/`) and `.py .json .yaml .yml .txt .md` files; anything else (for example `normalization.npz`, `stats.pkl`, a CSV) is refused |
@@ -83,19 +83,19 @@ A TensorFlow SavedModel is a folder: `baseline/final_model/` holding
 | archives `.zip .tar .gz .tgz .bz2 .xz .7z .rar .zst` (any suffix in the name) | refused everywhere |
 | symlinks, devices, FIFOs | refused |
 | `__pycache__/ .git/ .DS_Store .ipynb_checkpoints/ .pytest_cache/ *.pyc *.pyo` | skipped when checking a folder and when building the zip; refused inside an uploaded zip |
-| zip members | no absolute paths, no `..`, no backslashes, no symlinks, no duplicate names; one top folder; at most 10,000 members; declared expanded size <= 200 MB |
+| zip members | no absolute paths, no `..`, no backslashes, no symlinks, no duplicate names; one top folder; at most 10,000 members; declared expanded size <= 200 MiB |
 
 CSV split or manifest files (row ids per split, file lists) are allowed outside
 `baseline/` inside the per-file limit. Model artifacts are subject to the same
-5 MB per-file limit.
+5 MiB per-file limit.
 
 An uploaded zip is unpacked only when it passes every zip-level rule above:
-the checker refuses to unpack a zip over 20 MB, any member declaring more than
-5 MB, a declared expanded total over 200 MB, more than 10,000 members, an
+the checker refuses to unpack a zip over 20 MiB, any member declaring more than
+5 MiB, a declared expanded total over 200 MiB, more than 10,000 members, an
 unsafe or duplicate member name, or a symlink. Extraction never writes more
 than a member's declared size. An unreadable or malformed zip (bad CRC, a file
 and a folder with the same name) is a step 1 FAIL; the other steps SKIP.
-A folder whose files include one over 5 MB is not built into a zip for
+A folder whose files include one over 5 MiB is not built into a zip for
 measuring; step 1 reports the file.
 
 ## 2. `data_source.json`
@@ -397,7 +397,7 @@ clutter; writes `DIR/<task_id>.zip` with `--task_id`, otherwise
 `DIR/<folder>.zip` (never replacing an existing file); prints the path, size,
 sha256 and the task id. A malformed `--task_id` is refused. The zip is
 deterministic: sorted members under `<folder>/`, deflate level 9, timestamp 1980-01-01, mode 0644.
-Files over 5 MB are refused by step 1 before anything is read into the zip. Exit 0 on
+Files over 5 MiB are refused by step 1 before anything is read into the zip. Exit 0 on
 success, 1 on refusal.
 
 ## 8. Worked examples
