@@ -58,7 +58,7 @@ free research data archive that gives every dataset a permanent DOI.
 | --- | --- |
 | [SPEC.md](SPEC.md) | The exact rules: layout, file formats, size limits, every check. Your coding agent reads this. |
 | [templates/TASK_CARD.md](templates/TASK_CARD.md) | The task card to fill in, with guidance under each heading. |
-| [examples/](examples/) | Three complete submissions of the same task to copy from: a PyTorch MLP, a scikit-learn decision tree and a Keras MLP. Each passes every check except 2a (the Zenodo record) until the organizers publish the data and fill in the record id. |
+| [examples/](examples/) | Start with the local PyTorch walkthrough; optional scikit-learn and Keras variants are under examples/advanced/. These are format references, not submission-ready packages; the Zenodo check intentionally fails. |
 | `tools/check_submission.py` | The self-check. Run it before every upload. |
 | `tools/make_submission.py` | Builds the upload zip and prints its checksum. |
 | [skills/track1-task-check/SKILL.md](skills/track1-task-check/SKILL.md) | Instructions for a coding agent (Claude Code, Codex) helping you check and improve your task. |
@@ -275,7 +275,7 @@ tool printed; the portal's receipt shows the sha256 it received, and the two
 should match. You can upload new versions until the deadline; the latest
 counts.
 
-## The worked examples
+## Local walkthrough and advanced variants
 
 [examples/](examples/) holds the SIDERIUS quickstart task (classify 256
 synthetic rows with four features into two classes) as three submissions that
@@ -284,15 +284,13 @@ differ only in `baseline/`:
 | Example | Baseline | Files in `baseline/` |
 | --- | --- | --- |
 | [quickstart_classification](examples/quickstart_classification/) | PyTorch MLP | `init_model.pt`, `final_model.pt`; no `requirements.txt` |
-| [quickstart_classification_sklearn](examples/quickstart_classification_sklearn/) | scikit-learn decision tree | `final_model.skops` only; `requirements.txt` pins scikit-learn and skops |
-| [quickstart_classification_keras](examples/quickstart_classification_keras/) | Keras MLP (Keras 3 on its PyTorch backend) | `init_model.keras`, `final_model.keras`; `requirements.txt` pins keras |
+| [quickstart_classification_sklearn](examples/advanced/quickstart_classification_sklearn/) | scikit-learn decision tree | `final_model.skops` only; `requirements.txt` pins scikit-learn and skops |
+| [quickstart_classification_keras](examples/advanced/quickstart_classification_keras/) | Keras MLP (Keras 3 on its PyTorch backend) | `init_model.keras`, `final_model.keras`; `requirements.txt` pins keras |
 
 Read [the PyTorch example's TASK_CARD.md](examples/quickstart_classification/TASK_CARD.md) first.
 
-Its four data files are generated, not downloaded. Until the organizers
-publish them on Zenodo, its `data_source.json` holds the placeholder record id
-`ZENODO_RECORD_ID`, so step 2a fails with "placeholder" and every other step
-passes. To check it yourself, generate the files from your SIDERIUS checkout:
+Its four data files are generated, not downloaded. This is intentionally a local-only walkthrough. Its `data_source.json` holds the placeholder record id
+`ZENODO_RECORD_ID`, so step 2a fails with "placeholder". This expected failure does not count as a full checker PASS; inspect the other steps separately. To check it yourself, generate the files from your SIDERIUS checkout:
 
 ```bash
 mkdir -p /absolute/path/example-data
@@ -308,13 +306,16 @@ $SIDERIUS/.venv/bin/python tools/check_submission.py examples/quickstart_classif
   --siderius $SIDERIUS --data_dir /absolute/path/example-data --retrain
 ```
 
-Replace `quickstart_classification` with `quickstart_classification_sklearn` or
-`quickstart_classification_keras` to check the others; those two build the
+Replace `examples/quickstart_classification` with
+`examples/advanced/quickstart_classification_sklearn` or
+`examples/advanced/quickstart_classification_keras` to check the others; those two build the
 separate baseline environment described in step 3.
 
 The generator prints the SHA-256 of `shard_0000.csv` to `shard_0003.csv`.
-After the upload, the organizers replace `ZENODO_RECORD_ID` in
-`data_source.json` and `TASK_CARD.md` of each example with the record id.
+There is no planned Zenodo publication for these walkthrough files. For a real
+challenge, replace the placeholder in `data_source.json` and `TASK_CARD.md`
+with your own published version record, then run the complete checker.
+Never bypass step 2a or report the walkthrough as submission-ready.
 
 ## Where each choice lives
 

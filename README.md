@@ -87,10 +87,10 @@ to Zenodo and what information you need back from me.
 > “Could a model get a good score without solving the scientific problem?
 > What would catch that? Could speed, model size, or compute cost also matter?”
 
-Your agent can use the [worked example](examples/quickstart_classification/)
-to understand the format. Its tiny synthetic dataset demonstrates packaging;
-it is not the target scale for a scientific challenge. The example's Zenodo
-record is currently a placeholder, so it is not yet a fully downloadable submission.
+Your agent can use the [Local walkthrough](examples/README.md) to learn the
+package format with a tiny, locally generated dataset. No Zenodo account or
+download is needed for the walkthrough. **It is not a submission-ready challenge.**
+For your real submission, publish your own data on Zenodo and pass the full checker.
 
 ## 2 · Handle the human steps
 

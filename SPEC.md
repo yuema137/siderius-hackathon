@@ -403,13 +403,14 @@ success, 1 on refusal.
 
 ## 8. Worked examples
 
-Three complete submissions share one task package (`task/`, byte-identical),
+One local walkthrough and two advanced framework variants share one task package (`task/`, byte-identical),
 `fetch_data.py` and `data_source.json`, converted from the SIDERIUS quickstart
 (synthetic two-class tabular data). Their data files are the four quickstart
 shards generated with seed 20260824 (SHA-256 equal to the pins in SIDERIUS
 `examples/quickstart/declared/data_manifest.json`); `data_source.json` holds
-their real sizes and md5 with the placeholder record id, so step 2a fails until
-the organizers publish them. The task package is the SIDERIUS CSV
+their real sizes and md5 with an intentional placeholder record id. Step 2a
+therefore fails: these examples are not submission-ready and no Zenodo publication
+is planned for them. Real submissions must pass that check with a published record. The task package is the SIDERIUS CSV
 classification template adapted to that data (file-backed labels), with primary
 `accuracy`, secondary `balanced_accuracy`, two Health checks and the PyTorch
 model plugin bonus.
@@ -417,8 +418,8 @@ model plugin bonus.
 | Example | framework / format | init model | requirements.txt | validation accuracy |
 | --- | --- | --- | --- | --- |
 | `quickstart_classification` | `pytorch` / `pt` (MLP) | yes | none (SIDERIUS venv) | 0.859375 |
-| `quickstart_classification_sklearn` | `sklearn` / `skops` (decision tree) | no | `scikit-learn==1.7.2`, `skops==0.13.0` | 0.8125 |
-| `quickstart_classification_keras` | `tensorflow` / `keras` (MLP, Keras 3 on the PyTorch backend) | yes | `keras==3.12.0` | 0.875 |
+| `advanced/quickstart_classification_sklearn` | `sklearn` / `skops` (decision tree) | no | `scikit-learn==1.7.2`, `skops==0.13.0` | 0.8125 |
+| `advanced/quickstart_classification_keras` | `tensorflow` / `keras` (MLP, Keras 3 on the PyTorch backend) | yes | `keras==3.12.0` | 0.875 |
 
 ## 9. Unresolved
 

@@ -406,7 +406,7 @@ def _tree(root: Path) -> dict[str, bytes]:
 def test_three_examples_share_task_package_and_data_source() -> None:
     reference = EXAMPLES / "quickstart_classification"
     for name in ("quickstart_classification_sklearn", "quickstart_classification_keras"):
-        example = EXAMPLES / name
+        example = EXAMPLES / "advanced" / name
         assert _tree(example / "task") == _tree(reference / "task"), name
         for shared in ("fetch_data.py", "data_source.json"):
             assert (example / shared).read_bytes() == (reference / shared).read_bytes(), (name, shared)
@@ -422,7 +422,8 @@ def test_three_examples_share_task_package_and_data_source() -> None:
 )
 def test_examples_pass_step_1_and_4_0(name: str, framework: str, has_init: bool, tmp_path: Path) -> None:
     root = tmp_path / name
-    shutil.copytree(EXAMPLES / name, root, ignore=shutil.ignore_patterns("__pycache__"))
+    source = EXAMPLES / name if name == "quickstart_classification" else EXAMPLES / "advanced" / name
+    shutil.copytree(source, root, ignore=shutil.ignore_patterns("__pycache__"))
     static = check_static(root)
     assert static.problems == [] and static.baseline_result is not None
     assert static.baseline_result.framework == framework and (static.init_model is not None) == has_init

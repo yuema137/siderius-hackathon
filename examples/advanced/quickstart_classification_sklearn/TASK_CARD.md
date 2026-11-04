@@ -1,7 +1,7 @@
 # Task card: quickstart classification, scikit-learn baseline (worked example)
 
-This is the kit's worked example. It is synthetic and demonstrates the
-submission format, not a scientific contribution.
+This is a local walkthrough. It uses synthetic data to demonstrate the
+package format, not a scientific contribution or a submission-ready challenge.
 
 ## Scientific question
 
@@ -26,11 +26,11 @@ where the rule mixes products and periodic terms.
 
 ## Data
 
-- DOI: 10.5281/zenodo.ZENODO_RECORD_ID (placeholder: the organizers upload the
-  four files and fill in the record id and DOI)
+- DOI: 10.5281/zenodo.ZENODO_RECORD_ID (intentional placeholder;
+  data is generated locally, with no planned Zenodo publication)
 - Size: 4 CSV files, 14,192 bytes in total; 64 rows per file
 - License: cc-by-4.0
-- Access: public
+- Access: local walkthrough; the public-access declaration is illustrative
 - Processing: `fetch_data.py` downloads the four shards (or reads them from
   `--source_dir`), checks each size and md5 against `data_source.json`, then
   writes `train.csv` (shards 0 and 1 concatenated) and `validation.csv`
