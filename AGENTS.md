@@ -108,7 +108,7 @@ you go. The card's sections are listed in [SPEC.md section 5](SPEC.md#5-task_car
 
 First, sign in to the portal at [the submission portal](https://submit.siderius.scitra.org) and create your task with a
 title. The portal registers the title and assigns the task's id, for example
-`t1-007`; you upload every version of the package to that task.
+`t1-007`; you upload the package to that task, and each new upload replaces the previous one.
 
 Then create a folder for the package with any working name (letters, digits,
 `-`, `_`, starting with a letter or digit), for example `galaxy_morphology/`. The folder name is only for you;
@@ -274,10 +274,11 @@ old zip away first; it is never overwritten.
 ### 5. Upload
 
 On the portal at [the submission portal](https://submit.siderius.scitra.org), open the task you created in step 2 and upload
-the zip to it. Each upload is a new version of that task. Keep the sha256 the
-tool printed; the portal's receipt shows the sha256 it received, and the two
-should match. You can upload new versions until the deadline; the latest
-counts.
+the zip to it. A new upload replaces the task's current submission: only the
+latest successful upload is kept and reviewed, and an upload that fails the
+portal's checks leaves the current one in place. Keep the sha256 the tool
+printed; the portal's receipt shows the sha256 it received, and the two should
+match. You can re-upload until the deadline.
 
 ## Local walkthrough and advanced variants
 

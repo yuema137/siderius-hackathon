@@ -25,7 +25,8 @@ flow is:
 2. create a task with a title; the portal assigns its id, `t1-NNN` (for
    example `t1-007`; regex `^t1-[0-9]{3,}$`) and registers the title;
 3. build and check the package locally (sections 6 and 7);
-4. upload the zip to that task; each upload is a new version of it.
+4. upload the zip to that task; a new upload replaces the task's current
+   submission, so only the latest successful upload is kept and reviewed.
 
 The zip's top folder name is only the author's working name; it is not the task
 id and the portal ignores it. The `TASK_CARD.md` title heading is free text; the
