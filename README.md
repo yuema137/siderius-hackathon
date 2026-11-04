@@ -9,6 +9,14 @@
 
 # Track 1 · Create a scientific challenge
 
+| 🌐 Event website | 📝 Register | 📦 Submit |
+| --- | --- | --- |
+| [**The Galileo Hackathon**](https://siderius.scitra.org/hackathon) | [**Register for Track 1**](https://docs.google.com/forms/d/e/1FAIpQLSegtIj5T3vizkBu_Vy66cXYVrgAEU0pYpEJzxIrPJxY74n5mQ/viewform) | [**Open submission portal**](https://submit.siderius.scitra.org) |
+
+**Register first to receive submission access, then sign in with your registered GitHub account.**
+
+Looking for inspiration? [Explore the Track 1 guide, datasets, and simulation tools](https://siderius.scitra.org/hackathon/track-1).
+
 **The Galileo Hackathon — bring your scientific curiosity. Your agent helps with the code.**
 
 Bring a scientific question that you want others to explore with machine learning.
@@ -18,10 +26,6 @@ baseline**. A baseline is a simple solution that others can reproduce and improv
 **You do not need to write code by hand.** Work with a coding agent such as
 Claude Code or Codex. You make the scientific decisions; your agent helps turn
 them into a runnable SIDERIUS task package.
-
-[Explore ideas & datasets](https://siderius.scitra.org/hackathon/track-1#data) ·
-[Register for Track 1](https://docs.google.com/forms/d/e/1FAIpQLSegtIj5T3vizkBu_Vy66cXYVrgAEU0pYpEJzxIrPJxY74n5mQ/viewform) ·
-[Open submission portal](https://submit.siderius.scitra.org)
 
 ```mermaid
 flowchart LR
