@@ -134,7 +134,7 @@ checksum, and anything I still need to do before uploading.
 
 Organizer review is a **manual reproducibility check**, not a judgment of
 scientific merit or research quality. “Verified” only confirms reproducibility
-of the reviewed version. Your agent's advice does not grant that status.
+of the current submission. Your agent's advice does not grant that status.
 
 ## What goes in the submission?
 
@@ -146,8 +146,9 @@ of the reviewed version. Your agent's advice does not grant that status.
 | ▶️ **Working baseline** | Provide a runnable solution, model weights or algorithm code, and reported results. |
 
 Upload **one zip**. The dataset stays on Zenodo. Other participants cannot see
-your submission; public release requires your permission. You can upload a new
-version until the deadline; the latest is reviewed.
+your submission; public release requires your permission. Until the deadline
+you can upload again: the new upload replaces your current one, and only the
+latest is kept and reviewed.
 
 **Technical instructions for your agent:** [AGENTS.md](AGENTS.md) ·
 [Exact specification](SPEC.md) ·
