@@ -99,9 +99,16 @@ def test_cache_clutter_is_ignored_not_refused(submission: Path) -> None:
     assert not any("__pycache__" in f for f in result.files)
 
 
-def test_unsafe_folder_name_is_refused(tmp_path: Path, submission: Path) -> None:
-    renamed = submission.rename(tmp_path / "bad name")
-    assert any("'bad name' is not a safe folder name" in p for p in problems_of(renamed))
+@pytest.mark.parametrize("name", ["bad name", "-rf", "_hidden", "x" * 81, "a.b"])
+def test_unsafe_folder_name_is_refused(tmp_path: Path, submission: Path, name: str) -> None:
+    renamed = submission.rename(tmp_path / name)
+    assert any(f"{name!r} is not a safe folder name" in p for p in problems_of(renamed))
+
+
+@pytest.mark.parametrize("name", ["a", "7", "Galaxy_morphology-2", "x" * 80])
+def test_safe_folder_names_are_accepted(tmp_path: Path, submission: Path, name: str) -> None:
+    renamed = submission.rename(tmp_path / name)
+    assert not any("not a safe folder name" in p for p in problems_of(renamed))
 
 
 # -- size limits ----------------------------------------------------------------
@@ -645,6 +652,9 @@ def test_malformed_task_ids_are_refused(value: str, capsys: pytest.CaptureFixtur
     [
         ("galaxy_morphology", "galaxy_morphology"),
         ("my task.v2", "my-task-v2"),
+        ("-rf", "rf"),
+        ("__init__", "init"),
+        ("---", "local-task"),
         ("", "local-task"),
         (None, "local-task"),
     ],

@@ -38,7 +38,9 @@ MAX_ZIP_MEMBERS = 10_000
 PLACEHOLDER_RECORD_ID = "ZENODO_RECORD_ID"
 
 #: The zip's single top folder: the author's working name, NOT the task id.
-FOLDER_NAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,80}")
+#: Starts with a letter or digit, so a name such as ``-rf`` cannot be read as a
+#: command-line option by organizers' shell commands (same rule as the portal).
+FOLDER_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}")
 #: Task ids are assigned by the submission portal when the author creates a task.
 PORTAL_TASK_ID_PATTERN = re.compile(r"t1-[0-9]{3,}")
 LOCAL_ID_LABEL = "local working id (the portal assigns the real id)"
@@ -49,9 +51,10 @@ def local_task_id(folder_name: str | None) -> str:
     """A safe SIDERIUS console task id derived from the working folder name.
 
     Used only when no portal id (``--task_id``) is given; the portal assigns
-    the real id. Unsafe characters become ``-``; at most 80 characters.
+    the real id. Unsafe characters become ``-``; leading and trailing ``-``/``_``
+    are dropped so the id starts with a letter or digit; at most 80 characters.
     """
-    cleaned = re.sub(r"[^A-Za-z0-9_-]", "-", folder_name or "")[:80].strip("-")
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "-", folder_name or "").strip("-_")[:80]
     return cleaned or "local-task"
 
 
@@ -581,7 +584,8 @@ def check_static(root: Path) -> StaticResult:
     result = StaticResult()
     if not FOLDER_NAME_PATTERN.fullmatch(root.name):
         result.problems.append(
-            f"folder name {root.name!r} is not a safe folder name (letters, digits, '-', '_'; at most 80)"
+            f"folder name {root.name!r} is not a safe folder name (start with a letter or digit; then letters, "
+            "digits, '-', '_'; at most 80 characters)"
         )
     files, problems = list_package_files(root)
     result.files = files

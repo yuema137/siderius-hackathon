@@ -86,7 +86,7 @@ title. The portal registers the title and assigns the task's id, for example
 `t1-007`; you upload every version of the package to that task.
 
 Then create a folder for the package with any working name (letters, digits,
-`-`, `_`), for example `galaxy_morphology/`. The folder name is only for you;
+`-`, `_`, starting with a letter or digit), for example `galaxy_morphology/`. The folder name is only for you;
 the task id is the one the portal assigned. The fastest start is to copy the
 worked example closest to your model and change it. The folder holds:
 

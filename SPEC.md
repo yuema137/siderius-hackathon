@@ -53,7 +53,9 @@ The upload is one zip with exactly one top folder:
 A TensorFlow SavedModel is a folder: `baseline/final_model/` holding
 `saved_model.pb` (and `variables/`), and likewise `baseline/init_model/`.
 
-- `<folder>` matches `[A-Za-z0-9_-]{1,80}` (safe-name rule). Track 2 registers
+- `<folder>` matches `^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$` (safe-name rule, the
+  same as the portal's): it starts with a letter or digit, so a name such as
+  `-rf` cannot be read as a command-line option. Track 2 registers
   the package under the portal-assigned id: it copies `task/` to
   `siderius_workspace/tasks/<task id>/` and the processed data to
   `siderius_workspace/data/<task id>/` and runs `add-task --task-id <task id>`.
