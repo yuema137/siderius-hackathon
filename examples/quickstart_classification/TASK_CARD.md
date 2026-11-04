@@ -60,8 +60,10 @@ where the rule mixes products and periodic terms.
 - Score on `validation.csv`: accuracy 0.859375, balanced accuracy 0.853353.
 - Seed 20261104 (initial weights and batch order); CPU only, one thread;
   about 4.5 s to train and 4 s to evaluate including start-up. No GPU needed.
-- Bonus: the same model is shipped as a SIDERIUS model plugin, so the final
-  weights load into the model a SIDERIUS run builds.
+- Saved as PyTorch state dicts `baseline/init_model.pt` and
+  `baseline/final_model.pt`; no extra packages (no `requirements.txt`).
+- Bonus: the same model is shipped as a SIDERIUS model plugin (PyTorch), so
+  the final model loads into the model a SIDERIUS run builds.
 
 ## Novelty
 

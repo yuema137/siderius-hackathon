@@ -1,0 +1,31 @@
+# What the agents are told about the task, and the model's input and output.
+
+task_description: |
+  Classify each row of a small synthetic tabular dataset into class 0 or 1 from
+  four numeric features x0..x3 drawn uniformly from [-1, 1]. The hidden rule is
+  label = 1 iff x0*x1 + sin(pi*x2) > x3, with 3% of labels flipped, so no model
+  can reach 100%. Training uses train.csv (128 rows), scoring uses
+  validation.csv (64 rows). The main score is accuracy on validation.csv;
+  higher is better. Balanced accuracy is recorded as a secondary score.
+
+forward_contract:
+  segmentation_applicability: not_applicable
+  model_io:
+    input:
+      axes:
+        - {role: batch, dimension: {symbolic: "B"}}
+        - {dimension: {fixed: 4}}
+      dtype: {admissible: ["float32"]}
+    output:
+      axes:
+        - {role: batch, dimension: {symbolic: "B"}}
+        - {role: class, dimension: {fixed: 2}}
+      dtype: {admissible: ["float32"]}
+  input_description: "a batch of 4 numeric features (x0, x1, x2, x3) per row"
+  output_description: "one logit per class, class 0 then class 1"
+  task_type: "classification"
+  output_head_note: >-
+    Output exactly [B, 2] logits. Do not apply softmax inside the model.
+  task_note: >-
+    Small tabular data with a nonlinear (product and sine) decision rule; small
+    MLPs are appropriate. With 128 training rows, overfitting is the main risk.

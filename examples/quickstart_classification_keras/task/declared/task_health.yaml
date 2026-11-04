@@ -1,0 +1,32 @@
+# Health: checks that decide whether a trained model's predictions are usable
+# at all, separately from how well they score. Both are generic SIDERIUS checks;
+# plugins/_qc_health_views.py hands them the predicted classes.
+
+facts:
+  encoding_family: class_index
+  symbol_cardinality: 2
+
+plugins:
+  - kind: file
+    ref: ../plugins/_qc_health_views.py
+
+providers:
+  - provider_id: quickstart_classification.predicted_classes
+
+roster:
+  - gate_id: predicts_more_than_one_class
+    check: categorical_distinct_symbols
+    disposition: blocking
+    parameters:
+      min_distinct_symbols: 2
+    reason: >-
+      Class 0 is 58% of validation.csv, so predicting it everywhere scores
+      about 0.58 accuracy without using the features; such a model is invalid.
+  - gate_id: dominant_class_fraction
+    check: categorical_dominant_fraction
+    disposition: recording
+    parameters:
+      max_dominant_fraction: 0.8
+    reason: >-
+      Predicting one class for more than 80% of rows (the largest true class
+      share is 58%) is an early sign of collapse toward the majority class.

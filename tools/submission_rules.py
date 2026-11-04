@@ -16,7 +16,7 @@ import stat
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, ValidationError, field_validator, model_validator
 
@@ -34,13 +34,49 @@ PLACEHOLDER_RECORD_ID = "ZENODO_RECORD_ID"
 
 TASK_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,80}")
 
-#: Data arrays and tables belong on Zenodo; refused outside baseline/.
+#: Data arrays and tables belong on Zenodo; refused outside baseline/ (and inside
+#: baseline/ unless the file is the model artifact itself, e.g. final_model.pkl).
 DATA_SUFFIXES = frozenset({".npz", ".npy", ".h5", ".hdf5", ".parquet", ".pkl", ".pickle", ".feather"})
-#: Model weights; allowed only as baseline/init_weights.* and baseline/final_weights.*.
-WEIGHT_SUFFIXES = frozenset({".safetensors", ".pt", ".pth", ".ckpt", ".bin", ".onnx"})
-#: The one supported weight format: a torch state dict loadable with
-#: torch.load(weights_only=True). (safetensors is not in the SIDERIUS environment.)
-ALLOWED_WEIGHT_SUFFIXES = (".pt",)
+#: Model-like files; refused outside baseline/.
+MODEL_SUFFIXES = frozenset(
+    {".safetensors", ".pt", ".pth", ".ckpt", ".bin", ".onnx", ".keras", ".joblib", ".skops", ".cbm", ".ubj", ".pb"}
+)
+#: Non-model files allowed inside baseline/ besides the model artifacts.
+BASELINE_CONFIG_SUFFIXES = frozenset({".py", ".json", ".yaml", ".yml", ".txt", ".md"})
+
+FRAMEWORKS = ("pytorch", "tensorflow", "sklearn", "xgboost", "lightgbm", "catboost", "other")
+#: model_format ids: the text after ``final_model.`` (``savedmodel`` is a directory).
+MODEL_FORMATS = (
+    "pt",
+    "onnx",
+    "keras",
+    "weights.h5",
+    "savedmodel",
+    "json",
+    "ubj",
+    "txt",
+    "cbm",
+    "skops",
+    "joblib",
+    "pkl",
+)
+#: Allowed formats per framework, recommended first.
+FRAMEWORK_FORMATS: dict[str, tuple[str, ...]] = {
+    "pytorch": ("pt", "onnx"),
+    "tensorflow": ("keras", "weights.h5", "savedmodel", "onnx"),
+    "xgboost": ("json", "ubj"),
+    "lightgbm": ("txt",),
+    "catboost": ("cbm",),
+    "sklearn": ("skops", "joblib", "pkl"),
+    "other": MODEL_FORMATS,
+}
+#: Neural-network frameworks must ship init_model next to final_model.
+NEURAL_FRAMEWORKS = frozenset({"pytorch", "tensorflow"})
+#: Formats that execute code when loaded; the checker never loads them.
+PICKLE_FORMATS = frozenset({"joblib", "pkl"})
+MODEL_STEMS = ("init_model", "final_model")
+REQUIREMENTS = "baseline/requirements.txt"
+
 #: Archives could smuggle data or weights past the rules above; refused everywhere.
 ARCHIVE_SUFFIXES = frozenset({".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".zst"})
 #: Editor/cache clutter: skipped when building a zip and when checking a folder,
@@ -56,7 +92,6 @@ REQUIRED_FILES = (
     "baseline/run_baseline.py",
     "baseline/baseline_result.json",
 )
-WEIGHT_STEMS = ("baseline/init_weights", "baseline/final_weights")
 
 #: Level-2 headings TASK_CARD.md must contain (any order; matched case-insensitively).
 CARD_HEADINGS = (
@@ -173,6 +208,11 @@ class BaselineResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: Literal[1]
+    framework: Literal["pytorch", "tensorflow", "sklearn", "xgboost", "lightgbm", "catboost", "other"]
+    model_format: Literal[
+        "pt", "onnx", "keras", "weights.h5", "savedmodel", "json", "ubj", "txt", "cbm", "skops", "joblib", "pkl"
+    ] = Field(description="suffix of baseline/final_model.<format>; savedmodel is the directory baseline/final_model/")
+    hyperparameters: dict[str, Any] = Field(description="everything needed to retrain, with the seed")
     seed: int
     evaluation_split: str = Field(min_length=1, description="the split metrics.json is computed on")
     metrics: dict[str, StrictFloat] = Field(min_length=1, description="by declared metric id")
@@ -191,6 +231,11 @@ class BaselineResult(BaseModel):
             raise ValueError("tolerance must name exactly the metric ids in metrics")
         if any(value < 0 for value in self.tolerance.values()):
             raise ValueError("tolerance values must be >= 0")
+        if self.model_format not in FRAMEWORK_FORMATS[self.framework]:
+            raise ValueError(
+                f"model_format {self.model_format!r} is not allowed for framework {self.framework!r}; "
+                f"use one of {list(FRAMEWORK_FORMATS[self.framework])}"
+            )
         return self
 
 
@@ -289,6 +334,19 @@ def list_package_files(root: Path) -> tuple[list[str], list[str]]:
     return sorted(files), problems
 
 
+def model_stem_of(relative: str) -> str | None:
+    """``init_model`` / ``final_model`` when ``relative`` is part of a model artifact."""
+    parts = PurePosixPath(relative).parts
+    if len(parts) < 2 or parts[0] != "baseline":
+        return None
+    for stem in MODEL_STEMS:
+        if len(parts) == 2 and parts[1].startswith(stem + "."):
+            return stem
+        if len(parts) > 2 and parts[1] == stem:  # SavedModel directory
+            return stem
+    return None
+
+
 def file_rule_problems(relative: str, size: int) -> list[str]:
     """Problems for one file by path and size (shared by folder and zip checks)."""
     problems = []
@@ -300,32 +358,117 @@ def file_rule_problems(relative: str, size: int) -> list[str]:
         problems.append(f"{relative} is {size} bytes; the limit per file is {MAX_FILE_BYTES} (5 MB)")
     if suffixes & ARCHIVE_SUFFIXES:
         problems.append(f"{relative} is an archive; archives are not allowed inside a submission")
-    if suffix in DATA_SUFFIXES and top != "baseline":
-        problems.append(
-            f"{relative}: {suffix} data files belong on Zenodo, not in the package "
-            "(only baseline/ may hold small auxiliary arrays)"
-        )
-    if suffix in WEIGHT_SUFFIXES:
-        stem = str(path.with_suffix(""))
-        if stem not in WEIGHT_STEMS or suffix not in ALLOWED_WEIGHT_SUFFIXES:
+    if top != "baseline":
+        if suffix in DATA_SUFFIXES:
+            problems.append(f"{relative}: {suffix} data files belong on Zenodo, not in the package")
+        elif suffix in MODEL_SUFFIXES:
             problems.append(
-                f"{relative}: weights are allowed only as baseline/init_weights.pt and baseline/final_weights.pt"
+                f"{relative}: model files are allowed only as baseline/init_model.<format> and "
+                "baseline/final_model.<format>"
             )
+    elif model_stem_of(relative) is None and suffix not in BASELINE_CONFIG_SUFFIXES:
+        problems.append(
+            f"{relative}: baseline/ may hold only init_model/final_model artifacts and "
+            ".py, .json, .yaml, .yml, .txt or .md files"
+        )
     return problems
 
 
-def weight_file(files: list[str], stem: str) -> tuple[str | None, str | None]:
-    """``(the one weight file for stem, problem)``."""
-    found = [
+@dataclass(frozen=True)
+class ModelArtifact:
+    stem: str  # init_model | final_model
+    model_format: str
+    path: str  # relative file, or the SavedModel directory
+    files: tuple[str, ...]  # every relative file that belongs to it
+
+
+def find_model_artifact(files: list[str], stem: str) -> tuple[ModelArtifact | None, list[str]]:
+    """``(the one artifact named stem, problems)``; ``(None, [])`` when absent."""
+    single = [
         f
         for f in files
-        if PurePosixPath(f).with_suffix("").as_posix() == stem and PurePosixPath(f).suffix in ALLOWED_WEIGHT_SUFFIXES
+        if PurePosixPath(f).parent.as_posix() == "baseline" and PurePosixPath(f).name.startswith(stem + ".")
     ]
-    if not found:
-        return None, f"missing {stem}.pt"
+    folder = [f for f in files if f.startswith(f"baseline/{stem}/")]
+    found: list[ModelArtifact] = []
+    problems: list[str] = []
+    for relative in single:
+        model_format = PurePosixPath(relative).name[len(stem) + 1 :]
+        if model_format not in MODEL_FORMATS or model_format == "savedmodel":
+            problems.append(f"{relative}: unknown model format {model_format!r}; see SPEC.md section 4.3")
+            continue
+        found.append(ModelArtifact(stem, model_format, relative, (relative,)))
+    if folder:
+        if f"baseline/{stem}/saved_model.pb" not in folder:
+            problems.append(f"baseline/{stem}/ is a folder but not a SavedModel (no saved_model.pb)")
+        else:
+            found.append(ModelArtifact(stem, "savedmodel", f"baseline/{stem}", tuple(folder)))
     if len(found) > 1:
-        return None, f"{stem} exists in more than one format: {found}; keep one"
-    return found[0], None
+        problems.append(f"baseline/{stem} exists in more than one format: {[a.path for a in found]}; keep one")
+        return None, problems
+    return (found[0] if found else None), problems
+
+
+def model_pair_problems(
+    result: BaselineResult | None, init: ModelArtifact | None, final: ModelArtifact | None
+) -> list[str]:
+    """The init/final pair rule and the agreement with baseline_result.json."""
+    problems = []
+    if final is None:
+        problems.append("missing baseline/final_model.<format> (or the SavedModel folder baseline/final_model/)")
+    if result is None:
+        return problems
+    if final is not None and final.model_format != result.model_format:
+        problems.append(
+            f"{final.path} has format {final.model_format!r} but baseline_result.json says {result.model_format!r}"
+        )
+    if result.framework in NEURAL_FRAMEWORKS:
+        if init is None:
+            problems.append(f"framework {result.framework!r} needs baseline/init_model.{result.model_format}")
+        elif init.model_format != result.model_format:
+            problems.append(f"{init.path} must use the same format as the final model ({result.model_format!r})")
+    elif init is not None and result.framework != "other":
+        problems.append(
+            f"{init.path}: framework {result.framework!r} has no initial model; remove it "
+            "(reproduction rests on seed and hyperparameters)"
+        )
+    elif init is not None and final is not None and init.model_format != final.model_format:
+        problems.append(f"{init.path} must use the same format as {final.path}")
+    return problems
+
+
+_REQUIREMENT = re.compile(
+    r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?(?:\[[A-Za-z0-9._-]+(?:,[A-Za-z0-9._-]+)*\])?"
+    r"==[A-Za-z0-9][A-Za-z0-9.+!_-]*(?:\s*;\s*[^#]+)?"
+)
+
+
+def requirements_problems(text: str) -> tuple[list[str], list[str]]:
+    """``(pinned requirement lines, problems)`` for baseline/requirements.txt.
+
+    Every requirement is ``name[extras]==version`` with an optional environment
+    marker. Options (``-e``, ``-r``, ``--index-url``, ...), URLs, direct
+    references and local paths are refused: the checker installs only pinned
+    packages from the default index.
+    """
+    pins: list[str] = []
+    problems: list[str] = []
+    for number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.split(" #", 1)[0].strip()
+        if not line or line.startswith("#"):
+            continue
+        where = f"{REQUIREMENTS} line {number} ({line!r})"
+        if line.startswith("-"):
+            problems.append(f"{where}: options such as -e, -r, -c and --index-url are not allowed")
+        elif "://" in line or " @ " in line or line.startswith("@"):
+            problems.append(f"{where}: URLs and direct references are not allowed; pin a released version")
+        elif "/" in line or "\\" in line or line.startswith("."):
+            problems.append(f"{where}: local paths are not allowed")
+        elif not _REQUIREMENT.fullmatch(line):
+            problems.append(f"{where}: pin an exact version, for example scikit-learn==1.7.2")
+        else:
+            pins.append(line)
+    return pins, problems
 
 
 # ---------------------------------------------------------------------------
@@ -380,8 +523,9 @@ class StaticResult:
     files: list[str] = field(default_factory=list)
     data_source: DataSource | None = None
     baseline_result: BaselineResult | None = None
-    init_weights: str | None = None
-    final_weights: str | None = None
+    init_model: ModelArtifact | None = None
+    final_model: ModelArtifact | None = None
+    requirements: list[str] | None = None  # None: no baseline/requirements.txt
 
 
 def _schema_problems(error: ValidationError, name: str) -> list[str]:
@@ -418,14 +562,16 @@ def check_static(root: Path) -> StaticResult:
     for required in REQUIRED_FILES:
         if required not in present:
             result.problems.append(f"missing required file {required}")
-    for stem in WEIGHT_STEMS:
-        found, problem = weight_file(files, stem)
-        if problem:
-            result.problems.append(problem)
-        elif stem.endswith("init_weights"):
-            result.init_weights = found
-        else:
-            result.final_weights = found
+    result.init_model, init_problems = find_model_artifact(files, "init_model")
+    result.final_model, final_problems = find_model_artifact(files, "final_model")
+    result.problems.extend(init_problems + final_problems)
+    if REQUIREMENTS in present:
+        try:
+            pins, problems = requirements_problems((root / REQUIREMENTS).read_text(encoding="utf-8"))
+        except UnicodeDecodeError:
+            pins, problems = [], [f"{REQUIREMENTS} is not UTF-8 text"]
+        result.requirements = pins
+        result.problems.extend(problems)
     for relative in files:
         result.problems.extend(file_rule_problems(relative, (root / relative).stat().st_size))
     if "data_source.json" in present:
@@ -442,6 +588,7 @@ def check_static(root: Path) -> StaticResult:
         )
         result.baseline_result = model  # type: ignore[assignment]
         result.problems.extend(problems)
+    result.problems.extend(model_pair_problems(result.baseline_result, result.init_model, result.final_model))
     if "TASK_CARD.md" in present:
         try:
             text = (root / "TASK_CARD.md").read_text(encoding="utf-8")

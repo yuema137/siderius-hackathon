@@ -1,0 +1,59 @@
+# Task package manifest for the Track 1 worked example "quickstart_classification".
+# Every path is relative to this folder (task/), so the folder can be copied to
+# siderius_workspace/tasks/<task_id>/. Built from the SIDERIUS CSV classification
+# template (examples/task_templates/csv_classification) and the quickstart dataset.
+
+task_data_path:
+  file: plugins/_qc_task.py
+  symbol: CsvClassificationTaskDataPath
+  config:
+    # fetch_data.py writes these two files into the data folder.
+    train_file: train.csv
+    validation_file: validation.csv
+    label_column: label
+    classes: [0, 1]
+    id_column: sample_id
+    feature_count: 4
+
+dataset_profile:
+  config: declared/dataset_profile.json
+
+metric:
+  declaration: declared/metric_accuracy.json
+  implementation:
+    file: plugins/_qc_metrics.py
+    symbol: AccuracyMetric
+
+secondary_metrics:
+  - declaration: declared/metric_balanced_accuracy.json
+    implementation:
+      file: plugins/_qc_metrics.py
+      symbol: BalancedAccuracyMetric
+
+objective:
+  config:
+    loss_type: ce
+    reduction: mean
+
+task_health:
+  config: declared/task_health.yaml
+
+interpretation_blocks:
+  none: true
+
+deliverable:
+  prefix: quickstart_classification_predictions
+  extension: .json
+  index_width: 4
+
+task_config:
+  config: declared/task_config.yaml
+
+parameter_rules:
+  train_config.batch_size:
+    range: {min: 1, max: 32}
+
+# Bonus: the baseline's model as a SIDERIUS model plugin.
+model_plugins:
+  dir: plugins
+  require: [quickstart_classification_mlp]

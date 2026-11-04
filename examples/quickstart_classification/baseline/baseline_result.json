@@ -1,5 +1,19 @@
 {
   "schema_version": 1,
+  "framework": "pytorch",
+  "model_format": "pt",
+  "hyperparameters": {
+    "model": "quickstart_classification_mlp",
+    "hidden_dim": 16,
+    "optimizer": "adam",
+    "learning_rate": 0.01,
+    "weight_decay": 0.0001,
+    "batch_size": 32,
+    "epochs": 150,
+    "loss": "cross_entropy",
+    "torch_threads": 1,
+    "deterministic_algorithms": true
+  },
   "seed": 20261104,
   "evaluation_split": "validation",
   "metrics": {

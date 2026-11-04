@@ -33,8 +33,9 @@ def test_worked_example_passes_step_1(submission: Path) -> None:
     """The shipped example must stay a valid submission; any rule change that breaks it fails here."""
     result = check_static(submission)
     assert result.problems == []
-    assert result.init_weights == "baseline/init_weights.pt"
-    assert result.final_weights == "baseline/final_weights.pt"
+    assert result.init_model is not None and result.init_model.path == "baseline/init_model.pt"
+    assert result.final_model is not None and result.final_model.path == "baseline/final_model.pt"
+    assert result.requirements is None
 
 
 # -- layout refusals ----------------------------------------------------------
@@ -48,31 +49,38 @@ def test_data_files_outside_baseline_are_refused(submission: Path, relative: str
     assert any(relative in p and "belong on Zenodo" in p for p in problems_of(submission))
 
 
-def test_small_arrays_inside_baseline_are_allowed(submission: Path) -> None:
-    (submission / "baseline" / "normalization.npz").write_bytes(b"0")
+@pytest.mark.parametrize("relative", ["baseline/normalization.npz", "baseline/stats.pkl", "baseline/table.csv"])
+def test_baseline_folder_holds_only_model_artifacts_and_small_configs(submission: Path, relative: str) -> None:
+    (submission / relative).write_bytes(b"0")
+    assert any(relative in p and "may hold only init_model/final_model" in p for p in problems_of(submission))
+
+
+@pytest.mark.parametrize("relative", ["baseline/config.yaml", "baseline/notes.md", "baseline/helpers.py"])
+def test_baseline_config_and_code_files_are_allowed(submission: Path, relative: str) -> None:
+    (submission / relative).write_text("x")
     assert problems_of(submission) == []
 
 
-@pytest.mark.parametrize("relative", ["task/plugins/model.pt", "baseline/checkpoint.pt", "baseline/final_weights.ckpt"])
-def test_weights_outside_the_two_named_files_are_refused(submission: Path, relative: str) -> None:
+@pytest.mark.parametrize("relative", ["task/plugins/model.pt", "model.keras", "task/m.joblib", "x.onnx"])
+def test_model_files_outside_baseline_are_refused(submission: Path, relative: str) -> None:
     (submission / relative).write_bytes(b"0")
-    assert any(relative in p and "weights are allowed only" in p for p in problems_of(submission))
+    assert any(relative in p and "model files are allowed only" in p for p in problems_of(submission))
 
 
-def test_safetensors_weights_are_refused(submission: Path) -> None:
-    """Only .pt is supported: the SIDERIUS environment has no safetensors package."""
-    (submission / "baseline" / "init_weights.pt").rename(submission / "baseline" / "init_weights.safetensors")
+def test_unknown_or_duplicate_model_formats_are_refused(submission: Path) -> None:
+    (submission / "baseline" / "final_model.safetensors").write_bytes(b"0")
+    (submission / "baseline" / "init_model.onnx").write_bytes(b"0")
     problems = problems_of(submission)
-    assert any("init_weights.safetensors: weights are allowed only" in p for p in problems)
-    assert "missing baseline/init_weights.pt" in problems
+    assert any("final_model.safetensors: unknown model format 'safetensors'" in p for p in problems)
+    assert any("baseline/init_model exists in more than one format" in p for p in problems)
 
 
-def test_missing_weights_and_required_files_are_named(submission: Path) -> None:
-    (submission / "baseline" / "final_weights.pt").unlink()
+def test_missing_final_model_and_required_files_are_named(submission: Path) -> None:
+    (submission / "baseline" / "final_model.pt").unlink()
     (submission / "fetch_data.py").unlink()
     problems = problems_of(submission)
     assert "missing required file fetch_data.py" in problems
-    assert any("missing baseline/final_weights" in p for p in problems)
+    assert any(p.startswith("missing baseline/final_model.<format>") for p in problems)
 
 
 def test_nested_archives_and_symlinks_are_refused(submission: Path) -> None:
@@ -200,6 +208,9 @@ def _reported(**tolerance: float) -> BaselineResult:
     return BaselineResult.model_validate(
         {
             "schema_version": 1,
+            "framework": "sklearn",
+            "model_format": "skops",
+            "hyperparameters": {},
             "seed": 1,
             "evaluation_split": "validation",
             "metrics": {"a": 0.5, "b": 10.0},
@@ -341,7 +352,7 @@ def test_zip_is_deterministic_and_excludes_clutter(submission: Path, tmp_path: P
         names = archive.namelist()
     assert all(name.startswith("quickstart_classification/") for name in names)
     assert not any("__pycache__" in name for name in names)
-    assert "quickstart_classification/baseline/final_weights.pt" in names
+    assert "quickstart_classification/baseline/final_model.pt" in names
 
 
 def test_make_submission_refuses_failing_folder_and_existing_output(submission: Path, tmp_path: Path) -> None:
@@ -435,6 +446,7 @@ def test_without_siderius_or_data_the_dependent_steps_skip(submission: Path) -> 
         "3a": "SKIP",
         "3b": "SKIP",
         "4.0": "SKIP",
+        "4.1": "SKIP",
         "4a": "SKIP",
         "4b": "SKIP",
     }
@@ -531,16 +543,17 @@ def test_folder_with_oversized_file_is_not_read_into_a_zip(submission: Path, mon
 
 
 def _steps(**statuses: str) -> list[checker.Step]:
-    ids = {"s1": "1", "s3a": "3a", "s3b": "3b", "s40": "4.0", "s4a": "4a", "s4b": "4b"}
+    ids = {"s1": "1", "s3a": "3a", "s3b": "3b", "s40": "4.0", "s41": "4.1", "s4a": "4a", "s4b": "4b"}
     return [checker.Step(ids[key], key, status, "") for key, status in statuses.items()]
 
 
 def test_verdict_distinguishes_incomplete_from_pass_and_fail() -> None:
-    assert checker.verdict_of(_steps(s1="PASS", s3a="PASS", s3b="PASS", s40="PASS", s4a="PASS", s4b="SKIP"))[0] == (
-        "PASS"
+    passing = _steps(s1="PASS", s3a="PASS", s3b="PASS", s40="PASS", s41="PASS", s4a="PASS", s4b="SKIP")
+    assert checker.verdict_of(passing)[0] == "PASS"
+    verdict, _, skipped = checker.verdict_of(
+        _steps(s1="PASS", s3a="SKIP", s3b="PASS", s40="PASS", s41="SKIP", s4a="SKIP")
     )
-    verdict, _, skipped = checker.verdict_of(_steps(s1="PASS", s3a="SKIP", s3b="PASS", s40="PASS", s4a="SKIP"))
-    assert verdict == "INCOMPLETE" and skipped == ["3a", "4a"]
+    assert verdict == "INCOMPLETE" and skipped == ["3a", "4.1", "4a"]
     assert checker.verdict_of(_steps(s1="FAIL", s3a="SKIP"))[0] == "FAIL"
 
 

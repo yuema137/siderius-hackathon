@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "framework": "tensorflow",
+  "model_format": "keras",
+  "hyperparameters": {
+    "architecture": "Dense(16, relu) -> Dense(2) logits",
+    "optimizer": "adam",
+    "learning_rate": 0.01,
+    "batch_size": 32,
+    "epochs": 150,
+    "loss": "sparse_categorical_crossentropy(from_logits=True)",
+    "keras_backend": "torch",
+    "torch_threads": 1,
+    "deterministic_algorithms": true
+  },
+  "seed": 20261104,
+  "evaluation_split": "validation",
+  "metrics": {
+    "accuracy": 0.875,
+    "balanced_accuracy": 0.8718718718718719
+  },
+  "tolerance": {
+    "accuracy": 0.016,
+    "balanced_accuracy": 0.02
+  },
+  "hardware": {
+    "device": "cpu",
+    "description": "AMD Ryzen 9 7900X 12-Core Processor, 1 torch thread, Linux x86_64"
+  },
+  "wall_time": {
+    "train_seconds": 5.7,
+    "evaluate_seconds": 4.4
+  },
+  "framework_versions": {
+    "python": "3.12.13",
+    "keras": "3.12.0",
+    "torch": "2.10.0+cu128",
+    "siderius": "1ab94b5101f705f2bd90ba89a21fd10bb2ed98de"
+  }
+}

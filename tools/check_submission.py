@@ -6,7 +6,7 @@ Usage::
         [--data_dir DIR] [--download] [--retrain] [--report out.json]
 
 Steps (each PASS, FAIL or SKIP with a reason). Verdict and exit status:
-PASS (0) when no step fails and the required steps 3a, 3b, 4.0 and 4a ran;
+PASS (0) when no step fails and the required steps 3a, 3b, 4.0, 4.1 and 4a ran;
 FAIL (1) when any step fails; INCOMPLETE (2) when nothing failed but a required
 step was skipped (4b may be skipped).
 
@@ -17,9 +17,13 @@ step was skipped (4b may be skipped).
                               processes them; or --download runs fetch_data.py
     3a  siderius_admission    console init + add-task --manifest --no-gpu + check
     3b  siderius_composition  the SIDERIUS composer loads task/task.yaml and its plugins
-    4.0 baseline_weights      init/final .pt weights load with torch.load(weights_only=True)
+    4.0 baseline_model        init/final model artifacts: format-aware sanity checks that
+                              never execute participant objects (.pt via weights_only;
+                              .joblib/.pkl are never unpickled here)
+    4.1 baseline_environment  baseline/requirements.txt: a uv venv with SIDERIUS (non-editable,
+                              its locked versions) plus the pins; otherwise the SIDERIUS venv
     4a  baseline_evaluate     run_baseline.py evaluate reproduces baseline_result.json
-    4b  baseline_retrain      (--retrain) run_baseline.py train from init weights + seed
+    4b  baseline_retrain      (--retrain) run_baseline.py train from seed (+ init model)
 
 Participant code (fetch_data.py, run_baseline.py, task plugins) runs only in
 subprocesses: own session, killed with its process group on timeout, umask 077,
@@ -58,7 +62,10 @@ from submission_rules import (  # noqa: E402
     MAX_FILE_BYTES,
     MAX_ZIP_BYTES,
     DataSource,
+    PICKLE_FORMATS,
+    REQUIREMENTS,
     MetricsFile,
+    ModelArtifact,
     StaticResult,
     build_zip_bytes,
     check_static,
@@ -77,7 +84,7 @@ OUTPUT_TAIL_BYTES = 64 * 1024
 #: Bound on waiting for a killed process group to be reaped.
 KILL_WAIT_SECONDS = 10.0
 #: Steps that must run for a PASS verdict; 4b (retrain) is optional.
-REQUIRED_STEPS = ("3a", "3b", "4.0", "4a")
+REQUIRED_STEPS = ("3a", "3b", "4.0", "4.1", "4a")
 PASSED_ENV = (
     "CUDA_VISIBLE_DEVICES",
     "LC_ALL",
@@ -112,6 +119,7 @@ class Context:
     processed_data: Path | None = None
     declared_metric_ids: list[str] | None = None
     admission_manifest: Path | None = None
+    baseline_python: Path | None = None  # set by step 4.1
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +172,9 @@ def _kill_group(pgid: int) -> None:
         pass
 
 
-def run(command: list[str], *, cwd: Path, timeout: float, env: dict[str, str]) -> Completed:
+def run(
+    command: list[str], *, cwd: Path, timeout: float, env: dict[str, str], tail_lines: int = OUTPUT_TAIL_LINES
+) -> Completed:
     """Run one subprocess in its own session; kill the whole group on timeout.
 
     Output goes to an anonymous file, not a pipe, so a grandchild that escapes
@@ -196,7 +206,7 @@ def run(command: list[str], *, cwd: Path, timeout: float, env: dict[str, str]) -
         size = log.seek(0, os.SEEK_END)
         log.seek(max(0, size - OUTPUT_TAIL_BYTES))
         text = log.read().decode("utf-8", errors="replace")
-    tail = "\n".join(text.splitlines()[-OUTPUT_TAIL_LINES:])
+    tail = "\n".join(text.splitlines()[-tail_lines:])
     return Completed([str(part) for part in command], code, timeout, tail)
 
 
@@ -546,7 +556,7 @@ def step_composition(ctx: Context) -> Step:
 # Step 4
 # ---------------------------------------------------------------------------
 
-WEIGHTS_SCRIPT = f"""
+TORCH_LOAD_SCRIPT = f"""
 import json, sys
 import torch
 out = {{}}
@@ -558,33 +568,289 @@ for path in sys.argv[1:]:
 print({RESULT_MARKER!r} + json.dumps(out, sort_keys=True))
 """
 
+ONNX_SCRIPT = f"""
+import json, sys
+try:
+    import onnx
+except ImportError:
+    print({RESULT_MARKER!r} + json.dumps({{"onnx": "not installed"}}))
+    raise SystemExit(0)
+for path in sys.argv[1:]:
+    onnx.checker.check_model(path)
+print({RESULT_MARKER!r} + json.dumps({{"onnx": onnx.__version__}}))
+"""
 
-def step_weights(ctx: Context) -> Step:
-    name = "baseline_weights"
-    if ctx.python is None:
-        return Step("4.0", name, "SKIP", "pass --siderius <checkout> (its interpreter provides torch)")
+HDF5_MAGIC = b"\x89HDF\r\n\x1a\n"
+NOT_LOADED = "not loaded by the checker; loaded only by your run_baseline.py inside the isolated environment"
+
+
+def _head(path: Path, count: int = 16) -> bytes:
+    with path.open("rb") as handle:
+        return handle.read(count)
+
+
+def _zip_names(path: Path) -> set[str] | None:
+    """Member names of a zip, reading only its directory (nothing is extracted or loaded)."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return set(archive.namelist())
+    except (OSError, zipfile.BadZipFile):
+        return None
+
+
+def inspect_artifact(root: Path, artifact: ModelArtifact) -> tuple[list[str], str]:
+    """``(problems, summary)``: a format sanity check that never deserializes objects.
+
+    ``.pt`` and ``.onnx`` get their deeper check in a subprocess (step_model);
+    ``.joblib`` / ``.pkl`` are never loaded here.
+    """
+    path = root / artifact.path
+    fmt = artifact.model_format
+    if fmt == "savedmodel":
+        pb = path / "saved_model.pb"
+        if pb.stat().st_size == 0:
+            return [f"{artifact.path}/saved_model.pb is empty"], "SavedModel"
+        return [], f"SavedModel folder with {len(artifact.files)} file(s)"
+    size = path.stat().st_size
+    if size == 0:
+        return [f"{artifact.path} is empty"], "empty"
+    head = _head(path)
+    if fmt == "pt":
+        if _zip_names(path) is None:
+            return [f"{artifact.path} is not a torch.save zip archive"], "pt"
+        return [], "torch.save archive"
+    if fmt == "onnx":
+        if head[:1] != b"\x08":
+            return [f"{artifact.path} does not start like an ONNX ModelProto (ir_version field)"], "onnx"
+        return [], "ONNX protobuf header"
+    if fmt == "keras":
+        names = _zip_names(path)
+        if names is None or not {"config.json", "model.weights.h5"} <= names:
+            return [f"{artifact.path} is not a .keras archive with config.json and model.weights.h5"], "keras"
+        return [], ".keras archive (config.json, model.weights.h5); not loaded"
+    if fmt == "weights.h5":
+        if not head.startswith(HDF5_MAGIC):
+            return [f"{artifact.path} is not an HDF5 file"], "weights.h5"
+        return [], "HDF5 file; not loaded"
+    if fmt == "json":
+        try:
+            document = json.loads(path.read_bytes())
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return [f"{artifact.path} is not valid JSON"], "json"
+        if not isinstance(document, dict) or "learner" not in document:
+            return [f"{artifact.path} is not an XGBoost JSON model (no 'learner' key)"], "json"
+        return [], "XGBoost JSON model"
+    if fmt == "ubj":
+        if not head.startswith(b"{"):
+            return [f"{artifact.path} is not a UBJSON object"], "ubj"
+        return [], "UBJSON object; not loaded"
+    if fmt == "txt":
+        if not head.startswith(b"tree"):
+            return [f"{artifact.path} does not start with 'tree' like a LightGBM text model"], "txt"
+        return [], "LightGBM text model"
+    if fmt == "cbm":
+        if not head.startswith(b"CBM1"):
+            return [f"{artifact.path} does not start with the CatBoost 'CBM1' signature"], "cbm"
+        return [], "CatBoost binary; not loaded"
+    if fmt == "skops":
+        names = _zip_names(path)
+        if names is None or "schema.json" not in names:
+            return [f"{artifact.path} is not a skops archive (no schema.json)"], "skops"
+        return [], "skops archive; not loaded"
+    if fmt in PICKLE_FORMATS:
+        return [], f".{fmt} {NOT_LOADED}"
+    return [f"{artifact.path}: unsupported format {fmt!r}"], fmt
+
+
+def _artifact_bytes(root: Path, artifact: ModelArtifact) -> list[tuple[str, bytes]]:
+    prefix = len(artifact.path)
+    return [(f[prefix:], (root / f).read_bytes()) for f in sorted(artifact.files)]
+
+
+def step_model(ctx: Context) -> Step:
+    name = "baseline_model"
     static = ctx.static
-    if static.init_weights is None or static.final_weights is None:
-        return Step("4.0", name, "SKIP", "init or final weights are missing (see step 1)")
-    init, final = ctx.root / static.init_weights, ctx.root / static.final_weights
-    details: dict[str, Any] = {"init": static.init_weights, "final": static.final_weights}
-    if init.read_bytes() == final.read_bytes():
-        return Step("4.0", name, "FAIL", "final weights are byte-identical to the initial weights", details)
-    done = run(
-        [str(ctx.python), "-I", "-c", WEIGHTS_SCRIPT, str(init), str(final)],
-        cwd=fresh_dir(ctx.work, "4.0"),
-        timeout=ctx.args.siderius_timeout,
-        env=child_env(ctx.work),
-    )
-    result = marker_result(done)
-    details["output_tail"] = done.output_tail
-    if done.returncode != 0 or result is None:
-        return Step(
-            "4.0", name, "FAIL", f"loading the weights safely {describe(done)}; see details.output_tail", details
+    result = static.baseline_result
+    final, init = static.final_model, static.init_model
+    if final is None or result is None:
+        return Step("4.0", name, "SKIP", "final model or baseline_result.json is missing or invalid (see step 1)")
+    artifacts = [a for a in (init, final) if a is not None]
+    details: dict[str, Any] = {"framework": result.framework, "model_format": result.model_format}
+    problems: list[str] = []
+    for artifact in artifacts:
+        found, summary = inspect_artifact(ctx.root, artifact)
+        problems += found
+        details[artifact.stem] = {"path": artifact.path, "check": summary}
+    if init is not None and _artifact_bytes(ctx.root, init) == _artifact_bytes(ctx.root, final):
+        problems.append("the final model is byte-identical to the initial model")
+    if not problems and result.model_format in ("pt", "onnx"):
+        if ctx.python is None:
+            details["problems"] = problems
+            return Step("4.0", name, "SKIP", f"pass --siderius to load the .{result.model_format} files", details)
+        script = TORCH_LOAD_SCRIPT if result.model_format == "pt" else ONNX_SCRIPT
+        done = run(
+            [str(ctx.python), "-I", "-c", script, *(str(ctx.root / a.path) for a in artifacts)],
+            cwd=fresh_dir(ctx.work, "4.0"),
+            timeout=ctx.args.siderius_timeout,
+            env=child_env(ctx.work),
         )
-    details["loaded"] = {Path(k).name: v for k, v in result.items()}
+        loaded = marker_result(done)
+        details["output_tail"] = done.output_tail
+        if done.returncode != 0 or loaded is None:
+            problems.append(f"loading the {result.model_format} files safely {describe(done)}; see details.output_tail")
+        else:
+            details["loaded"] = {Path(k).name: v for k, v in loaded.items()} if result.model_format == "pt" else loaded
+    details["problems"] = problems
+    if problems:
+        return Step("4.0", name, "FAIL", problems[0], details)
+    pair = "initial and final model" if init is not None else "final model (no initial model for this framework)"
     return Step(
-        "4.0", name, "PASS", "both weight files load as state dicts with torch.load(weights_only=True)", details
+        "4.0", name, "PASS", f"{result.framework}/{result.model_format}: {pair} pass the format checks", details
+    )
+
+
+# -- 4.1 baseline environment --------------------------------------------------
+
+NETWORK_ERRORS = (
+    "failed to fetch",
+    "error sending request",
+    "dns error",
+    "failed to lookup address",
+    "connection refused",
+    "network is unreachable",
+    "tcp connect error",
+    "operation timed out",
+    "could not connect",
+    "offline",
+)
+
+
+def run_uv(arguments: list[str], *, cwd: Path, timeout: float, tail_lines: int = OUTPUT_TAIL_LINES) -> Completed:
+    """Run uv, the checker's own trusted tool, with the caller's environment (cache, index, proxy)."""
+    return run(["uv", *arguments], cwd=cwd, timeout=timeout, env=dict(os.environ), tail_lines=tail_lines)
+
+
+def parse_freeze(text: str) -> dict[str, str]:
+    """``{name: version}`` from ``uv pip freeze`` (``name==v`` and ``name @ file://...`` lines)."""
+    versions = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if "==" in line and " " not in line:
+            name, version = line.split("==", 1)
+            versions[name] = version
+        elif " @ " in line:
+            name, reference = line.split(" @ ", 1)
+            versions[name.strip()] = reference.rsplit("/", 1)[-1]
+    return versions
+
+
+def copy_siderius_source(checkout: Path, target: Path) -> None:
+    """Copy the checkout's tracked files (with working-tree edits) so the build never writes into it."""
+    try:
+        listed = (
+            subprocess.run(["git", "-C", str(checkout), "ls-files", "-z"], capture_output=True, timeout=60, check=True)
+            .stdout.decode()
+            .split("\0")
+        )
+    except (OSError, subprocess.SubprocessError):
+        shutil.copytree(
+            checkout, target, symlinks=True, ignore=shutil.ignore_patterns(".git", ".venv", "build", "__pycache__")
+        )
+        return
+    for relative in filter(None, listed):
+        source = checkout / relative
+        if source.is_file() and not source.is_symlink():
+            destination = target / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+
+
+def _uv_failure(step_name: str, what: str, done: Completed, details: dict[str, Any]) -> Step:
+    details["output_tail"] = done.output_tail
+    text = done.output_tail.lower()
+    if done.returncode is not None and any(marker in text for marker in NETWORK_ERRORS):
+        return Step(
+            "4.1", step_name, "SKIP", f"{what} needs network access to the package index; rerun online", details
+        )
+    return Step("4.1", step_name, "FAIL", f"{what} {describe(done)}; see details.output_tail", details)
+
+
+def step_environment(ctx: Context) -> Step:
+    name = "baseline_environment"
+    if ctx.python is None:
+        return Step("4.1", name, "SKIP", "pass --siderius <checkout>")
+    if ctx.static.requirements is None:
+        ctx.baseline_python = ctx.python
+        return Step(
+            "4.1",
+            name,
+            "PASS",
+            "no baseline/requirements.txt: the baseline runs in the SIDERIUS venv",
+            {"python": str(ctx.python)},
+        )
+    if any(problem.startswith(REQUIREMENTS) for problem in ctx.static.problems):
+        return Step("4.1", name, "SKIP", f"{REQUIREMENTS} is invalid (see step 1)")
+    if shutil.which("uv") is None:
+        return Step("4.1", name, "SKIP", "uv is not installed; it builds the isolated baseline venv")
+    timeout = ctx.args.env_timeout
+    checkout = Path(ctx.args.siderius).resolve()
+    base = ctx.work / "baseline-env"
+    base.mkdir(mode=0o700)
+    source, wheels, venv = base / "siderius-src", base / "wheels", base / "venv"
+    details: dict[str, Any] = {"requirements": ctx.static.requirements}
+    copy_siderius_source(checkout, source)
+    pins = base / "requirements.txt"
+    pins.write_text("\n".join(ctx.static.requirements) + "\n", encoding="utf-8")
+    constraints = base / "constraints.txt"
+    commands = [
+        ("building the SIDERIUS wheel", ["build", "--wheel", "--out-dir", str(wheels), str(source)]),
+        (
+            "exporting SIDERIUS's locked versions",
+            [
+                "export",
+                "--frozen",
+                "--no-dev",
+                "--no-emit-project",
+                "--no-hashes",
+                "--format",
+                "requirements-txt",
+                "--project",
+                str(source),
+                "--output-file",
+                str(constraints),
+            ],
+        ),
+        ("creating the venv", ["venv", "--python", str(ctx.python), str(venv)]),
+    ]
+    for what, arguments in commands:
+        done = run_uv(arguments, cwd=base, timeout=timeout)
+        if done.returncode != 0:
+            return _uv_failure(name, what, done, details)
+    built = sorted(wheels.glob("*.whl"))
+    if len(built) != 1:
+        return Step("4.1", name, "FAIL", f"expected one SIDERIUS wheel, found {[p.name for p in built]}", details)
+    python = venv / "bin" / "python"
+    done = run_uv(
+        ["pip", "install", "--python", str(python), str(built[0]), "-r", str(pins), "-c", str(constraints)],
+        cwd=base,
+        timeout=timeout,
+    )
+    if done.returncode != 0:
+        return _uv_failure(name, "installing SIDERIUS and baseline/requirements.txt", done, details)
+    freeze = run_uv(["pip", "freeze", "--python", str(python)], cwd=base, timeout=timeout, tail_lines=10_000)
+    versions = parse_freeze(freeze.output_tail) if freeze.returncode == 0 else {}
+    wanted = {pin.split("==", 1)[0].split("[", 1)[0].lower().replace("_", "-") for pin in ctx.static.requirements}
+    details["resolved_versions"] = {
+        k: v for k, v in versions.items() if k.lower().replace("_", "-") in wanted | {"siderius", "torch", "numpy"}
+    }
+    details["python"] = str(python)
+    ctx.baseline_python = python
+    return Step(
+        "4.1",
+        name,
+        "PASS",
+        f"isolated venv with SIDERIUS (locked versions) and {len(ctx.static.requirements)} pinned package(s)",
+        details,
     )
 
 
@@ -626,6 +892,8 @@ def _compare(
 def _baseline_ready(ctx: Context, step_id: str, name: str) -> Step | None:
     if ctx.python is None:
         return Step(step_id, name, "SKIP", "pass --siderius <checkout> (the baseline runs with its interpreter)")
+    if ctx.baseline_python is None:
+        return Step(step_id, name, "SKIP", "no baseline environment (see step 4.1)")
     if ctx.static.baseline_result is None or not (ctx.root / "baseline" / "run_baseline.py").is_file():
         return Step(step_id, name, "SKIP", "run_baseline.py or a valid baseline_result.json is missing (see step 1)")
     if ctx.processed_data is None:
@@ -637,59 +905,67 @@ def step_evaluate(ctx: Context) -> Step:
     name = "baseline_evaluate"
     if (skip := _baseline_ready(ctx, "4a", name)) is not None:
         return skip
-    if ctx.static.final_weights is None:
-        return Step("4a", name, "SKIP", "final weights are missing (see step 1)")
+    final = ctx.static.final_model
+    if final is None:
+        return Step("4a", name, "SKIP", "the final model is missing (see step 1)")
     output = ctx.work / "baseline_evaluate"
     command = [
-        str(ctx.python),
+        str(ctx.baseline_python),
         str(ctx.root / "baseline" / "run_baseline.py"),
         "evaluate",
         "--data_dir",
         str(ctx.processed_data),
-        "--weights",
-        str(ctx.root / ctx.static.final_weights),
+        "--model",
+        str(ctx.root / final.path),
         "--output_dir",
         str(output),
     ]
     done = run(command, cwd=fresh_dir(ctx.work, "4a"), timeout=ctx.args.eval_timeout, env=child_env(ctx.work))
     return _compare(
-        ctx, "4a", name, output / "metrics.json", done, {"command": done.command}, "evaluating the final weights"
+        ctx, "4a", name, output / "metrics.json", done, {"command": done.command}, "evaluating the final model"
     )
+
+
+def written_final_model(output: Path, model_format: str) -> Path | None:
+    """The final model ``train`` wrote, in the declared format."""
+    if model_format == "savedmodel":
+        candidate = output / "final_model"
+        return candidate if (candidate / "saved_model.pb").is_file() else None
+    candidate = output / f"final_model.{model_format}"
+    return candidate if candidate.is_file() else None
 
 
 def step_retrain(ctx: Context) -> Step:
     name = "baseline_retrain"
     if not ctx.args.retrain:
-        return Step("4b", name, "SKIP", "pass --retrain to train from the initial weights and seed")
+        return Step("4b", name, "SKIP", "pass --retrain to retrain from the seed (and initial model)")
     if (skip := _baseline_ready(ctx, "4b", name)) is not None:
         return skip
-    if ctx.static.init_weights is None:
-        return Step("4b", name, "SKIP", "initial weights are missing (see step 1)")
     reported = ctx.static.baseline_result
     assert reported is not None
+    init = ctx.static.init_model
     output = ctx.work / "baseline_retrain"
     command = [
-        str(ctx.python),
+        str(ctx.baseline_python),
         str(ctx.root / "baseline" / "run_baseline.py"),
         "train",
         "--data_dir",
         str(ctx.processed_data),
-        "--init_weights",
-        str(ctx.root / ctx.static.init_weights),
         "--seed",
         str(reported.seed),
         "--output_dir",
         str(output),
     ]
+    if init is not None:
+        command += ["--init_model", str(ctx.root / init.path)]
     done = run(command, cwd=fresh_dir(ctx.work, "4b"), timeout=ctx.args.train_timeout, env=child_env(ctx.work))
     details: dict[str, Any] = {"command": done.command}
-    if done.returncode == 0:
-        finals = sorted(p.name for p in output.glob("final_weights.*")) if output.is_dir() else []
-        details["final_weights"] = finals
-        if "final_weights.pt" not in finals:
-            details["output_tail"] = done.output_tail
-            return Step("4b", name, "FAIL", "train did not write final_weights.pt", details)
-    return _compare(ctx, "4b", name, output / "metrics.json", done, details, f"retraining with seed {reported.seed}")
+    if done.returncode == 0 and written_final_model(output, reported.model_format) is None:
+        details["output_tail"] = done.output_tail
+        expected = "final_model/" if reported.model_format == "savedmodel" else f"final_model.{reported.model_format}"
+        return Step("4b", name, "FAIL", f"train did not write {expected} in --output_dir", details)
+    what = f"retraining with seed {reported.seed}" + (" from the initial model" if init is not None else "")
+    return _compare(ctx, "4b", name, output / "metrics.json", done, details, what)
 
 
 # ---------------------------------------------------------------------------
@@ -794,6 +1070,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     cli.add_argument("--siderius_timeout", type=float, default=600)
     cli.add_argument("--eval_timeout", type=float, default=1800)
     cli.add_argument("--train_timeout", type=float, default=6 * 3600)
+    cli.add_argument("--env_timeout", type=float, default=3600, help="building the baseline venv (step 4.1)")
     args = cli.parse_args(argv)
     if args.data_dir is not None and args.download:
         cli.error("--data_dir and --download are alternatives; pass one")
@@ -805,7 +1082,8 @@ STEP_NAMES = (
     ("2b", "data_files"),
     ("3a", "siderius_admission"),
     ("3b", "siderius_composition"),
-    ("4.0", "baseline_weights"),
+    ("4.0", "baseline_model"),
+    ("4.1", "baseline_environment"),
     ("4a", "baseline_evaluate"),
     ("4b", "baseline_retrain"),
 )
@@ -847,7 +1125,8 @@ def check(args: argparse.Namespace, fetch: Fetch | None = None) -> dict[str, Any
             steps.append(step_data_files(ctx))
             steps.append(step_admission(ctx))
             steps.append(step_composition(ctx))
-            steps.append(step_weights(ctx))
+            steps.append(step_model(ctx))
+            steps.append(step_environment(ctx))
             steps.append(step_evaluate(ctx))
             steps.append(step_retrain(ctx))
         verdict, failed, skipped = verdict_of(steps)

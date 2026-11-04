@@ -1,8 +1,10 @@
 """Baseline model as a SIDERIUS model plugin (the Track 1 bonus).
 
 Linear(4 -> hidden) -> ReLU -> Linear(hidden -> 2), the SIDERIUS quickstart
-reference MLP. ``baseline/run_baseline.py`` builds this same class, so
-``baseline/final_weights.pt`` loads into the model SIDERIUS runs.
+reference MLP. The PyTorch example's ``baseline/run_baseline.py`` builds this
+same class, so its ``baseline/final_model.pt`` loads into the model SIDERIUS
+runs. The plugin bonus is PyTorch-only; the standalone baseline may use any
+framework.
 
 Model plugin contract: the module defines ``PLUGIN_MODEL_TYPE``,
 ``PLUGIN_OUTPUT_TYPE``, ``PLUGIN_CONFIG_CLASS`` and ``PLUGIN_MODEL_CLASS``. The

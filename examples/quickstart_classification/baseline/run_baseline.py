@@ -4,14 +4,16 @@ Run with the SIDERIUS checkout's interpreter, because the task's own plugins
 (data access and metrics) import the SIDERIUS framework::
 
     PY=/path/to/SIDERIUS/.venv/bin/python
-    $PY run_baseline.py init     --seed S --output W.pt
-    $PY run_baseline.py train    --data_dir D --init_weights W.pt --seed S --output_dir O
-    $PY run_baseline.py evaluate --data_dir D --weights F.pt --output_dir O
+    $PY run_baseline.py init     --seed S --output init_model.pt
+    $PY run_baseline.py train    --data_dir D --seed S --output_dir O --init_model init_model.pt
+    $PY run_baseline.py evaluate --data_dir D --model final_model.pt --output_dir O
 
 ``D`` is the folder ``fetch_data.py --output_dir`` wrote. ``train`` writes
-``O/final_weights.pt`` and ``O/metrics.json``; ``evaluate`` writes
+``O/final_model.pt`` and ``O/metrics.json``; ``evaluate`` writes
 ``O/metrics.json`` (and ``O/predictions.json``). ``init`` is this example's
-helper for creating ``init_weights.pt``; the kit does not call it.
+helper for creating ``init_model.pt``; the kit does not call it. Models are
+PyTorch state dicts, saved with ``torch.save`` and loaded with
+``torch.load(weights_only=True)``.
 
 How the task is used. ``task/task.yaml`` is composed by SIDERIUS's own composer,
 so training and evaluation read the rows through the task's data path
@@ -132,7 +134,9 @@ def command_train(args: argparse.Namespace) -> int:
     features = torch.stack([dataset[i][0] for i in range(len(dataset))])
     labels = torch.stack([dataset[i][1] for i in range(len(dataset))])
     model = build_model()
-    model.load_state_dict(load_state(args.init_weights))
+    if args.init_model is None:
+        raise SystemExit("this PyTorch baseline needs --init_model (baseline/init_model.pt)")
+    model.load_state_dict(load_state(args.init_model))
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
     loss_fn = torch.nn.CrossEntropyLoss()
     generator = torch.Generator().manual_seed(args.seed)
@@ -152,7 +156,7 @@ def command_train(args: argparse.Namespace) -> int:
             print(f"epoch {epoch:3d} train loss {total / len(features):.4f}", flush=True)
     train_seconds = time.perf_counter() - started
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), args.output_dir / "final_weights.pt")
+    torch.save(model.state_dict(), args.output_dir / "final_model.pt")
     started = time.perf_counter()
     metrics = evaluate_model(model, composition, args.data_dir, args.output_dir)
     print(
@@ -172,7 +176,7 @@ def command_evaluate(args: argparse.Namespace) -> int:
     setup_torch()
     composition = compose_task()
     model = build_model()
-    model.load_state_dict(load_state(args.weights))
+    model.load_state_dict(load_state(args.model))
     started = time.perf_counter()
     metrics = evaluate_model(model, composition, args.data_dir, args.output_dir)
     print(json.dumps({"metrics": metrics, "evaluate_seconds": round(time.perf_counter() - started, 3)}, sort_keys=True))
@@ -182,17 +186,17 @@ def command_evaluate(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     cli = argparse.ArgumentParser(description="quickstart_classification baseline")
     commands = cli.add_subparsers(dest="command", required=True)
-    init = commands.add_parser("init", help="write seeded initial weights (example helper)")
+    init = commands.add_parser("init", help="write the seeded initial model (example helper)")
     init.add_argument("--seed", type=int, required=True)
     init.add_argument("--output", type=Path, required=True)
-    train = commands.add_parser("train", help="train from initial weights; write final weights + metrics")
+    train = commands.add_parser("train", help="train from the initial model; write final_model.pt + metrics")
     train.add_argument("--data_dir", type=Path, required=True)
-    train.add_argument("--init_weights", type=Path, required=True)
     train.add_argument("--seed", type=int, required=True)
     train.add_argument("--output_dir", type=Path, required=True)
+    train.add_argument("--init_model", type=Path)
     evaluate = commands.add_parser("evaluate", help="score weights on the evaluation split")
     evaluate.add_argument("--data_dir", type=Path, required=True)
-    evaluate.add_argument("--weights", type=Path, required=True)
+    evaluate.add_argument("--model", type=Path, required=True)
     evaluate.add_argument("--output_dir", type=Path, required=True)
     args = cli.parse_args(argv)
     handler = {"init": command_init, "train": command_train, "evaluate": command_evaluate}[args.command]

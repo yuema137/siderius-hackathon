@@ -1,0 +1,9 @@
+{
+  "id": "accuracy",
+  "direction": "higher",
+  "aggregation": "fraction_correct_over_validation_rows",
+  "scoreability": {"contract_id": "deliverable_presence"},
+  "references": [],
+  "transform": null,
+  "transform_params": {}
+}
