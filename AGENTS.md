@@ -58,7 +58,7 @@ free research data archive that gives every dataset a permanent DOI.
 | --- | --- |
 | [SPEC.md](SPEC.md) | The exact rules: layout, file formats, size limits, every check. Your coding agent reads this. |
 | [templates/TASK_CARD.md](templates/TASK_CARD.md) | The task card to fill in, with guidance under each heading. |
-| [examples/](examples/) | Three complete submissions of the same task to copy from: a PyTorch MLP, a scikit-learn decision tree and a Keras MLP. Each passes every check except 2a (the Zenodo record) until the organizers publish the data and fill in the record id. |
+| [examples/](examples/) | Start with the local PyTorch walkthrough; optional scikit-learn and Keras variants are under examples/advanced/. These are format references, not submission-ready packages; the Zenodo check intentionally fails. |
 | `tools/check_submission.py` | The self-check. Run it before every upload. |
 | `tools/make_submission.py` | Builds the upload zip and prints its checksum. |
 | [skills/track1-task-check/SKILL.md](skills/track1-task-check/SKILL.md) | Instructions for a coding agent (Claude Code, Codex) helping you check and improve your task. |
@@ -70,13 +70,13 @@ free research data archive that gives every dataset a permanent DOI.
 ```bash
 git clone https://github.com/yuema137/SIDERIUS.git
 cd SIDERIUS
-git checkout 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de   # minimum SIDERIUS; at release: git checkout v1.1.0
+git checkout v1.1.0
 uv sync --group dev --frozen
 ```
 
-Until the v1.1.0 release tag is published, the minimum is that commit; at
-release the requirement becomes "v1.1.0 or later" and step 0 checks out
-`v1.1.0`. Any later revision also works. The checker enforces the minimum: its
+Use the published v1.1.0 release for this event. The checker requires the
+`v1.1.0` tag to be an ancestor of the checkout (later revisions are accepted,
+but these instructions target the release). Its
 step 3.0 fails when your checkout's history does not contain it (run
 `git fetch --tags` if the checker says the revision is unknown). It also
 records the SIDERIUS version and git revision it ran with in its report.
@@ -148,12 +148,16 @@ galaxy_morphology/
 4. **Write the SIDERIUS task package in `task/`.** It tells SIDERIUS how to read
    your data, the model input and output, the metric and the Health checks.
    For CSV classification data, start from the example's `task/` or the
-   SIDERIUS [CSV classification template](https://github.com/yuema137/SIDERIUS/blob/master/examples/task_templates/csv_classification/README.md);
+   SIDERIUS [CSV classification template](https://github.com/yuema137/SIDERIUS/blob/v1.1.0/examples/task_templates/csv_classification/README.md);
    for anything else, follow the SIDERIUS
-   [task definition guide](https://github.com/yuema137/SIDERIUS/blob/master/docs/guides/define-a-task.md).
+   [task definition guide](https://github.com/yuema137/SIDERIUS/blob/v1.1.0/docs/guides/define-a-task.md).
    A coding agent opened in your SIDERIUS checkout can write it with you.
 5. **Write and run the baseline.** The baseline shows the task is solvable
-   and sets the score to beat. Use any of these frameworks; the file name is
+   and sets the score to beat. Classical algorithms and rule-based methods are also allowed: use `framework: "classic"`,
+   `model_format: "py"`, and `baseline/final_model.py` with no model weights.
+   Keep the same train/evaluate interface; for a fixed method, train copies the
+   algorithm into its output folder and evaluates it. See SPEC.md, Script baselines.
+   Use any of these frameworks; the file name is
    always `final_model.<format>`:
 
    | Framework | Recommended format | Also allowed |
@@ -224,7 +228,7 @@ task id: t1-007 (portal-assigned task id); folder: galaxy_morphology
 [PASS]   1 package: layout, sizes, file types, card and JSON schemas are valid
 [PASS]  2a zenodo_record: record 1234567 found; declared files match Zenodo's names, sizes and md5
 [PASS]  2b data_files: fetch_data.py downloaded and processed the Zenodo files: 2 file(s) in the data folder
-[PASS] 3.0 siderius_version: SIDERIUS 1.0.0 at 1ab94b5101f7 includes 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de
+[PASS] 3.0 siderius_version: SIDERIUS 1.1.0 at 5ccb436f88e6 includes v1.1.0
 [PASS]  3a siderius_admission: init, add-task --manifest --task-id t1-007 --no-gpu and check accepted the task
 [PASS]  3b siderius_composition: composed: primary metric accuracy (higher), 1 secondary, Health declared
 [PASS] 4.0 baseline_model: pytorch/pt: initial and final model pass the format checks
@@ -275,7 +279,7 @@ tool printed; the portal's receipt shows the sha256 it received, and the two
 should match. You can upload new versions until the deadline; the latest
 counts.
 
-## The worked examples
+## Local walkthrough and advanced variants
 
 [examples/](examples/) holds the SIDERIUS quickstart task (classify 256
 synthetic rows with four features into two classes) as three submissions that
@@ -284,15 +288,13 @@ differ only in `baseline/`:
 | Example | Baseline | Files in `baseline/` |
 | --- | --- | --- |
 | [quickstart_classification](examples/quickstart_classification/) | PyTorch MLP | `init_model.pt`, `final_model.pt`; no `requirements.txt` |
-| [quickstart_classification_sklearn](examples/quickstart_classification_sklearn/) | scikit-learn decision tree | `final_model.skops` only; `requirements.txt` pins scikit-learn and skops |
-| [quickstart_classification_keras](examples/quickstart_classification_keras/) | Keras MLP (Keras 3 on its PyTorch backend) | `init_model.keras`, `final_model.keras`; `requirements.txt` pins keras |
+| [quickstart_classification_sklearn](examples/advanced/quickstart_classification_sklearn/) | scikit-learn decision tree | `final_model.skops` only; `requirements.txt` pins scikit-learn and skops |
+| [quickstart_classification_keras](examples/advanced/quickstart_classification_keras/) | Keras MLP (Keras 3 on its PyTorch backend) | `init_model.keras`, `final_model.keras`; `requirements.txt` pins keras |
 
 Read [the PyTorch example's TASK_CARD.md](examples/quickstart_classification/TASK_CARD.md) first.
 
-Its four data files are generated, not downloaded. Until the organizers
-publish them on Zenodo, its `data_source.json` holds the placeholder record id
-`ZENODO_RECORD_ID`, so step 2a fails with "placeholder" and every other step
-passes. To check it yourself, generate the files from your SIDERIUS checkout:
+Its four data files are generated, not downloaded. This is intentionally a local-only walkthrough. Its `data_source.json` holds the placeholder record id
+`ZENODO_RECORD_ID`, so step 2a fails with "placeholder". This expected failure does not count as a full checker PASS; inspect the other steps separately. To check it yourself, generate the files from your SIDERIUS checkout:
 
 ```bash
 mkdir -p /absolute/path/example-data
@@ -308,13 +310,16 @@ $SIDERIUS/.venv/bin/python tools/check_submission.py examples/quickstart_classif
   --siderius $SIDERIUS --data_dir /absolute/path/example-data --retrain
 ```
 
-Replace `quickstart_classification` with `quickstart_classification_sklearn` or
-`quickstart_classification_keras` to check the others; those two build the
+Replace `examples/quickstart_classification` with
+`examples/advanced/quickstart_classification_sklearn` or
+`examples/advanced/quickstart_classification_keras` to check the others; those two build the
 separate baseline environment described in step 3.
 
 The generator prints the SHA-256 of `shard_0000.csv` to `shard_0003.csv`.
-After the upload, the organizers replace `ZENODO_RECORD_ID` in
-`data_source.json` and `TASK_CARD.md` of each example with the record id.
+There is no planned Zenodo publication for these walkthrough files. For a real
+challenge, replace the placeholder in `data_source.json` and `TASK_CARD.md`
+with your own published version record, then run the complete checker.
+Never bypass step 2a or report the walkthrough as submission-ready.
 
 ## Where each choice lives
 

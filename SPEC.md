@@ -10,9 +10,8 @@ the disagreement is a defect to report. Kit version 1.0.0.
 A submission is a **task package only**: a scientific ML task that SIDERIUS can
 run in Track 2. Submissions must be built and checked with SIDERIUS
 (<https://github.com/yuema137/SIDERIUS>) **v1.1.0 or later**. The minimum is the
-single constant `MIN_SIDERIUS` in `tools/submission_rules.py`, a git ref: until
-the `v1.1.0` tag exists it is commit `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de`
-(whose `pyproject.toml` still says 1.0.0); at release it becomes `v1.1.0`.
+single constant `MIN_SIDERIUS` in `tools/submission_rules.py`, set to the
+published release tag `v1.1.0`.
 Step 3.0 enforces it; the report records the checkout's version and revision.
 A submission contains no workflow, no data and no credentials; the data lives
 on Zenodo.
@@ -60,7 +59,7 @@ A TensorFlow SavedModel is a folder: `baseline/final_model/` holding
   `siderius_workspace/tasks/<task id>/` and the processed data to
   `siderius_workspace/data/<task id>/` and runs `add-task --task-id <task id>`.
 - `task/` follows the SIDERIUS
-  [task composition reference](https://github.com/yuema137/SIDERIUS/blob/master/docs/reference/task-composition.md).
+  [task composition reference](https://github.com/yuema137/SIDERIUS/blob/v1.1.0/docs/reference/task-composition.md).
   Required manifest sections: `task_data_path`, `dataset_profile`, `metric`
   (declaration + implementation), `task_health` (`config:` or `none: true`),
   `task_config`. Optional and encouraged: `secondary_metrics`, `evaluation`,
@@ -189,8 +188,8 @@ Pydantic model `BaselineResult` (`extra="forbid"`):
 | Field | Type | Rule |
 | --- | --- | --- |
 | `schema_version` | `1` | literal |
-| `framework` | enum | `pytorch`, `tensorflow` (TensorFlow or Keras, any backend), `sklearn`, `xgboost`, `lightgbm`, `catboost`, `other` |
-| `model_format` | enum | the text after `final_model.`: `pt`, `onnx`, `keras`, `weights.h5`, `savedmodel` (folder), `json`, `ubj`, `txt`, `cbm`, `skops`, `joblib`, `pkl`; must be allowed for `framework` (section 4.3) and match the file |
+| `framework` | enum | `classic` (algorithm/script), `pytorch`, `tensorflow` (TensorFlow or Keras, any backend), `sklearn`, `xgboost`, `lightgbm`, `catboost`, `other` |
+| `model_format` | enum | the text after `final_model.`: `py` (Classic / Script), `pt`, `onnx`, `keras`, `weights.h5`, `savedmodel` (folder), `json`, `ubj`, `txt`, `cbm`, `skops`, `joblib`, `pkl`; must be allowed for `framework` (section 4.3) and match the file |
 | `hyperparameters` | object | everything besides the seed needed to retrain (model settings, optimizer, epochs, ...) |
 | `seed` | int | passed as `--seed` in the retrain check |
 | `evaluation_split` | string | the split `metrics.json` is computed on, for example `validation` |
@@ -210,6 +209,7 @@ neural network also starts from `init_model`.
 
 | `framework` | Recommended | Also allowed | `init_model` |
 | --- | --- | --- | --- |
+| `classic` | `.py` (algorithm implementation) | | forbidden |
 | `pytorch` | `pt` | `onnx` | required, same format |
 | `tensorflow` | `keras` | `weights.h5`, `savedmodel`, `onnx` | required, same format |
 | `xgboost` | `json`, `ubj` | | not allowed |
@@ -293,6 +293,22 @@ setup code.
   dominated by PyTorch and its CUDA libraries (several GB; the installed venv
   occupies about 7.6 GB, measured at 1ab94b51), plus your pins. Budget minutes
   and disk accordingly; the `--env_timeout` default is 3600 s.
+
+### Script baselines (no trained model required)
+
+Classical algorithms, numerical methods and rule-based solutions are welcome.
+Use `framework: "classic"`, `model_format: "py"`, and provide the algorithm as
+`baseline/final_model.py`. No weights or `init_model` are required; an initial
+model is refused for this format. Include fixed algorithm settings in
+`hyperparameters` and any required configuration in `baseline/`.
+
+Keep the same `run_baseline.py` interface: `evaluate --model .../final_model.py`
+runs the algorithm and uses the task's metrics to produce `metrics.json`.
+`train` prepares (or copies, for a fixed algorithm) `final_model.py` into its
+output directory and evaluates it there. A fixed method may report zero training
+time. The source syntax check never executes the script; evaluation and rerun
+steps execute the participant's wrapper just as for other baselines. Syntax
+alone does not certify results. All data, size and reproduction rules still apply.
 
 ## 5. `TASK_CARD.md`
 
@@ -404,13 +420,14 @@ success, 1 on refusal.
 
 ## 8. Worked examples
 
-Three complete submissions share one task package (`task/`, byte-identical),
+One local walkthrough and two advanced framework variants share one task package (`task/`, byte-identical),
 `fetch_data.py` and `data_source.json`, converted from the SIDERIUS quickstart
 (synthetic two-class tabular data). Their data files are the four quickstart
 shards generated with seed 20260824 (SHA-256 equal to the pins in SIDERIUS
 `examples/quickstart/declared/data_manifest.json`); `data_source.json` holds
-their real sizes and md5 with the placeholder record id, so step 2a fails until
-the organizers publish them. The task package is the SIDERIUS CSV
+their real sizes and md5 with an intentional placeholder record id. Step 2a
+therefore fails: these examples are not submission-ready and no Zenodo publication
+is planned for them. Real submissions must pass that check with a published record. The task package is the SIDERIUS CSV
 classification template adapted to that data (file-backed labels), with primary
 `accuracy`, secondary `balanced_accuracy`, two Health checks and the PyTorch
 model plugin bonus.
@@ -418,8 +435,8 @@ model plugin bonus.
 | Example | framework / format | init model | requirements.txt | validation accuracy |
 | --- | --- | --- | --- | --- |
 | `quickstart_classification` | `pytorch` / `pt` (MLP) | yes | none (SIDERIUS venv) | 0.859375 |
-| `quickstart_classification_sklearn` | `sklearn` / `skops` (decision tree) | no | `scikit-learn==1.7.2`, `skops==0.13.0` | 0.8125 |
-| `quickstart_classification_keras` | `tensorflow` / `keras` (MLP, Keras 3 on the PyTorch backend) | yes | `keras==3.12.0` | 0.875 |
+| `advanced/quickstart_classification_sklearn` | `sklearn` / `skops` (decision tree) | no | `scikit-learn==1.7.2`, `skops==0.13.0` | 0.8125 |
+| `advanced/quickstart_classification_keras` | `tensorflow` / `keras` (MLP, Keras 3 on the PyTorch backend) | yes | `keras==3.12.0` | 0.875 |
 
 ## 9. Unresolved
 

@@ -33,6 +33,7 @@ def _zip_bytes(names: list[str]) -> bytes:
 
 #: Content that passes each format's sanity check.
 VALID = {
+    "py": b"def predict(x):\n    return [0 for _ in x]\n",
     "pt": _zip_bytes(["archive/data.pkl"]),
     "onnx": b"\x08\x07\x12\x00",
     "keras": _zip_bytes(["config.json", "model.weights.h5", "metadata.json"]),
@@ -80,6 +81,7 @@ def model_problems(root: Path) -> list[str]:
 @pytest.mark.parametrize(
     ("framework", "fmt", "init"),
     [
+        ("classic", "py", False),
         ("pytorch", "pt", True),
         ("pytorch", "onnx", True),
         ("tensorflow", "keras", True),
@@ -406,7 +408,7 @@ def _tree(root: Path) -> dict[str, bytes]:
 def test_three_examples_share_task_package_and_data_source() -> None:
     reference = EXAMPLES / "quickstart_classification"
     for name in ("quickstart_classification_sklearn", "quickstart_classification_keras"):
-        example = EXAMPLES / name
+        example = EXAMPLES / "advanced" / name
         assert _tree(example / "task") == _tree(reference / "task"), name
         for shared in ("fetch_data.py", "data_source.json"):
             assert (example / shared).read_bytes() == (reference / shared).read_bytes(), (name, shared)
@@ -422,7 +424,8 @@ def test_three_examples_share_task_package_and_data_source() -> None:
 )
 def test_examples_pass_step_1_and_4_0(name: str, framework: str, has_init: bool, tmp_path: Path) -> None:
     root = tmp_path / name
-    shutil.copytree(EXAMPLES / name, root, ignore=shutil.ignore_patterns("__pycache__"))
+    source = EXAMPLES / name if name == "quickstart_classification" else EXAMPLES / "advanced" / name
+    shutil.copytree(source, root, ignore=shutil.ignore_patterns("__pycache__"))
     static = check_static(root)
     assert static.problems == [] and static.baseline_result is not None
     assert static.baseline_result.framework == framework and (static.init_model is not None) == has_init
@@ -534,3 +537,59 @@ def test_model_step_says_how_deep_the_check_went(
     pytest.importorskip("torch") if fmt == "onnx" else None
     step = _model_step(submission, python=python)
     assert step.status == "PASS" and wording in step.reason, step.reason
+
+
+def test_classic_source_is_parsed_without_execution(submission: Path) -> None:
+    set_baseline(submission, "classic", "py", init=False,
+                 final_content=b"raise RuntimeError('must not execute during syntax check')\n")
+    assert check_static(submission).problems == []
+    assert _model_step(submission).status == "PASS"
+
+
+def test_classic_invalid_source_and_initial_model_refused(submission: Path) -> None:
+    set_baseline(submission, "classic", "py", init=False, final_content=b"def broken(:\n")
+    assert _model_step(submission).status == "FAIL"
+    set_baseline(submission, "classic", "py", init=True)
+    assert any("initial model" in p for p in check_static(submission).problems)
+
+
+def test_neural_framework_cannot_use_script_format(submission: Path) -> None:
+    set_baseline(submission, "pytorch", "py", init=False)
+    assert check_static(submission).problems
+
+
+def test_classic_evaluation_and_rerun_compare_real_outputs(submission: Path, tmp_path: Path) -> None:
+    set_baseline(submission, "classic", "py", init=False,
+                 final_content=b"def predict(x): return int(x >= 0)\n")
+    result_path = submission / "baseline/baseline_result.json"
+    result = json.loads(result_path.read_text())
+    result.update(metrics={"accuracy": 1.0}, tolerance={"accuracy": 0.0})
+    result_path.write_text(json.dumps(result))
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / "rows.json").write_text("[[-2, 0], [3, 1]]")
+    (submission / "baseline/run_baseline.py").write_text("""
+import argparse, importlib.util, json, shutil
+from pathlib import Path
+p=argparse.ArgumentParser()
+p.add_argument('action'); p.add_argument('--data_dir'); p.add_argument('--output_dir')
+p.add_argument('--model'); p.add_argument('--seed')
+a=p.parse_args(); out=Path(a.output_dir); out.mkdir(parents=True, exist_ok=True)
+model=Path(a.model) if a.model else Path(__file__).parent/'final_model.py'
+if a.action == 'train':
+    shutil.copyfile(model, out/'final_model.py'); model=out/'final_model.py'
+spec=importlib.util.spec_from_file_location('algorithm', model)
+m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+rows=json.loads((Path(a.data_dir)/'rows.json').read_text())
+score=sum(m.predict(x)==y for x,y in rows)/len(rows)
+(out/'metrics.json').write_text(json.dumps({'accuracy': score}))
+""")
+    work=tmp_path/'work'; work.mkdir()
+    ctx=checker.Context(root=submission, work=work,
+        args=checker.parse_args([str(submission), '--retrain']), static=check_static(submission),
+        python=Path(sys.executable), baseline_python=Path(sys.executable),
+        processed_data=data, declared_metric_ids=['accuracy'])
+    assert checker.step_evaluate(ctx).status == "PASS"
+    assert checker.step_retrain(ctx).status == "PASS"
+    (data/'rows.json').write_text('[[-2, 1], [3, 0]]')
+    assert checker.step_evaluate(ctx).status == "FAIL"
