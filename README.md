@@ -1,317 +1,149 @@
-# Galileo Hackathon Track 1: submit a scientific ML task
+<p align="center">
+  <a href="https://siderius.scitra.org/hackathon">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/siderius-dark.svg">
+      <img src="assets/siderius-light.svg" alt="SIDERIUS" width="360">
+    </picture>
+  </a>
+</p>
 
-In Track 1 you design a scientific machine-learning task: a question, the data
-that answers it, how answers are scored and a baseline that shows the task is
-solvable. In Track 2, agents built on [SIDERIUS](https://github.com/yuema137/SIDERIUS)
-try to beat your baseline. This kit tells you what to put in your submission,
-checks it on your own machine and builds the zip you upload.
+# Track 1 · Create a scientific challenge
 
-You submit **one zip of a task package**: the files that describe your task to
-SIDERIUS, a script that fetches your data, a baseline and a short task card.
-The data itself is not in the zip; it lives on [Zenodo](https://zenodo.org), a
-free research data archive that gives every dataset a permanent DOI.
+**The Galileo Hackathon — bring your scientific curiosity. Your agent helps with the code.**
 
-## Before you start
+Bring a scientific question that you want others to explore with machine learning.
+Your challenge gives them **data, a clear goal, a fair evaluation, and a working
+baseline**. A baseline is a simple solution that others can reproduce and improve.
 
-- **Linux** with **[bubblewrap](https://github.com/containers/bubblewrap)**
-  (`bwrap`, the sandbox SIDERIUS runs tasks in). Check it with
-  `bwrap --ro-bind / / true && echo ok`.
-- **Python 3.12+** and **[uv](https://docs.astral.sh/uv/)**.
-- **SIDERIUS v1.1.0 or later** from <https://github.com/yuema137/SIDERIUS>
-  (see step 0). The checker refuses an older checkout.
-- **This kit**, cloned anywhere.
-- **A Zenodo account** to publish your data.
-- **A GPU only if your baseline needs one.** No API keys are needed: the
-  checker never calls a language model.
-- **Network access and disk space** if your baseline needs extra packages
-  (`baseline/requirements.txt`): the checker then builds a separate Python
-  environment, which can download several GB the first time (see step 3).
+**You do not need to write code by hand.** Work with a coding agent such as
+Claude Code or Codex. You make the scientific decisions; your agent helps turn
+them into a runnable SIDERIUS task package.
 
-## What is in this kit
+[Explore ideas & datasets](https://siderius.scitra.org/hackathon/track-1#data) ·
+[Register for Track 1](https://docs.google.com/forms/d/e/1FAIpQLSegtIj5T3vizkBu_Vy66cXYVrgAEU0pYpEJzxIrPJxY74n5mQ/viewform) ·
+[Open submission portal](https://submit.siderius.scitra.org)
 
-| Path | What it is |
-| --- | --- |
-| [SPEC.md](SPEC.md) | The exact rules: layout, file formats, size limits, every check. Your coding agent reads this. |
-| [templates/TASK_CARD.md](templates/TASK_CARD.md) | The task card to fill in, with guidance under each heading. |
-| [examples/](examples/) | Three complete submissions of the same task to copy from: a PyTorch MLP, a scikit-learn decision tree and a Keras MLP. Each passes every check except 2a (the Zenodo record) until the organizers publish the data and fill in the record id. |
-| `tools/check_submission.py` | The self-check. Run it before every upload. |
-| `tools/make_submission.py` | Builds the upload zip and prints its checksum. |
-| [skills/track1-task-check/SKILL.md](skills/track1-task-check/SKILL.md) | Instructions for a coding agent (Claude Code, Codex) helping you check and improve your task. |
-
-## Steps
-
-### 0. Install SIDERIUS
-
-```bash
-git clone https://github.com/yuema137/SIDERIUS.git
-cd SIDERIUS
-git checkout 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de   # minimum SIDERIUS; at release: git checkout v1.1.0
-uv sync --group dev --frozen
+```mermaid
+flowchart LR
+    Q["🔬 Choose a question"] --> D["📊 Prepare & share data"]
+    D --> B["🤖 Build with your agent"]
+    B --> C["✓ Check & improve"]
+    C --> U["📦 Upload your challenge"]
 ```
 
-Until the v1.1.0 release tag is published, the minimum is that commit; at
-release the requirement becomes "v1.1.0 or later" and step 0 checks out
-`v1.1.0`. Any later revision also works. The checker enforces the minimum: its
-step 3.0 fails when your checkout's history does not contain it (run
-`git fetch --tags` if the checker says the revision is unknown). It also
-records the SIDERIUS version and git revision it ran with in its report.
+## Start with a question, not a leaderboard
 
-Success: the sync ends without an error and `.venv/bin/python` exists. Every
-later command uses this interpreter; the examples write it as
-`$SIDERIUS/.venv/bin/python`, so set `SIDERIUS=/absolute/path/to/SIDERIUS`
-first.
+What would count as progress in **your science**? Detecting a weaker signal,
+predicting a useful material property, or making a simulation cheaper can all
+be meaningful goals. The best metric need not be the one AI papers usually use.
 
-### 1. Design the task
+A good challenge is more than “get a higher score.” Decide:
 
-Decide, before writing code:
+- **What would we learn?** Name the scientific question and why its answer matters.
+- **What can the data tell us?** Define one independent sample and make sure there
+  is enough data and scientific information to support the question.
+- **What counts as success?** Choose a meaningful measurement and a fair test on
+  unseen samples. Keep related patients, experiments, or simulation runs together.
 
-- the scientific question and what one sample is;
-- the model input and output (shapes and meaning);
-- the split: which samples are for training, which for validation (the score
-  Track 2 agents see) and, if you keep one, a held-out test. Samples that are
-  related (same patient, run, detector, day) belong in the same split, or the
-  score is too optimistic;
-- the **primary metric** (required) and its direction (higher or lower is
-  better). Secondary metrics and **Health checks** are optional and
-  encouraged. A Health check is a rule that marks a model's output invalid
-  whatever its score, for example "predicts only one class".
+For example, a detector-signal challenge might ask: *Can we remove noise without
+erasing a weak physical signal?* A useful evaluation would check signal recovery
+as well as noise reduction, with different acquisition runs held out for testing.
+This is an idea to develop—not an announced competition task.
 
-Write these into a copy of [templates/TASK_CARD.md](templates/TASK_CARD.md) as
-you go. The card's sections are listed in [SPEC.md section 5](SPEC.md#5-task_cardmd).
+## 1 · Design it with your agent
 
-### 2. Build the package
-
-First, sign in to the portal at `PORTAL_URL` and create your task with a
-title. The portal registers the title and assigns the task's id, for example
-`t1-007`; you upload every version of the package to that task.
-
-Then create a folder for the package with any working name (letters, digits,
-`-`, `_`, starting with a letter or digit), for example `galaxy_morphology/`. The folder name is only for you;
-the task id is the one the portal assigned. The fastest start is to copy the
-worked example closest to your model and change it. The folder holds:
-
-```
-galaxy_morphology/
-  TASK_CARD.md
-  data_source.json
-  fetch_data.py
-  task/                 task.yaml + declared/ + plugins/
-  baseline/run_baseline.py
-  baseline/final_model.<format>      the trained baseline model
-  baseline/init_model.<format>       neural networks only: the model before training
-  baseline/requirements.txt          optional: extra packages, pinned with ==
-  baseline/baseline_result.json
-```
-
-1. **Publish the data on Zenodo.** Upload the files, choose a license and
-   publish. Public is preferred. If the data must stay restricted, publish it
-   as restricted and do one of these:
-   - create a *Can view* secret link (record page, **Share**, **Links**) that
-     expires no earlier than 2026-12-31, and put it in `share_link`; or
-   - share the record with the organizers' Zenodo account and say so in
-     `access_note`.
-
-   See [SPEC.md section 2](SPEC.md#2-data_sourcejson).
-2. **Write `data_source.json`**: the record id and DOI from the Zenodo page,
-   access, license, and each file's name, size in bytes and md5 checksum.
-   Zenodo shows the md5 on the record page; locally, `md5sum FILE` and
-   `stat -c %s FILE` give the same numbers.
-3. **Write `fetch_data.py`**: it downloads the files (or takes them from
-   `--source_dir`), checks the md5, and writes the files your task reads into
-   `--output_dir`. The example's [fetch_data.py](examples/quickstart_classification/fetch_data.py)
-   is a ready pattern.
-4. **Write the SIDERIUS task package in `task/`.** It tells SIDERIUS how to read
-   your data, the model input and output, the metric and the Health checks.
-   For CSV classification data, start from the example's `task/` or the
-   SIDERIUS [CSV classification template](https://github.com/yuema137/SIDERIUS/blob/master/examples/task_templates/csv_classification/README.md);
-   for anything else, follow the SIDERIUS
-   [task definition guide](https://github.com/yuema137/SIDERIUS/blob/master/docs/guides/define-a-task.md).
-   A coding agent opened in your SIDERIUS checkout can write it with you.
-5. **Write and run the baseline.** The baseline shows the task is solvable
-   and sets the score to beat. Use any of these frameworks; the file name is
-   always `final_model.<format>`:
-
-   | Framework | Recommended format | Also allowed |
-   | --- | --- | --- |
-   | PyTorch | `.pt` (a `state_dict` saved with `torch.save`) | `.onnx` |
-   | TensorFlow / Keras | `.keras` | `.weights.h5`, SavedModel folder `final_model/`, `.onnx` |
-   | XGBoost | `.json`, `.ubj` | |
-   | LightGBM | `.txt` | |
-   | CatBoost | `.cbm` | |
-   | scikit-learn | `.skops` | `.joblib`, `.pkl` (discouraged: loading them runs code) |
-
-   `baseline/run_baseline.py` has two commands, `train` and `evaluate`, and
-   computes scores with your task's own metric code
-   ([SPEC.md section 4](SPEC.md#4-baseline)). Train with a fixed seed and save
-   the final model. For a neural network (PyTorch, TensorFlow/Keras), also save
-   the model before training as `init_model.<format>`, so training can be
-   repeated from the same start; other models are repeated from the seed and
-   the hyperparameters alone. Record the framework, format, hyperparameters,
-   seed, scores, hardware, run time and a reproduction tolerance in
-   `baseline/baseline_result.json`.
-
-   If your baseline needs packages that SIDERIUS does not install (for example
-   scikit-learn or Keras), list them in `baseline/requirements.txt`, one per
-   line with an exact version (`scikit-learn==1.7.2`). Each package, and every
-   package it depends on, must be published as a wheel for Linux and Python
-   3.12; packages that only exist as source code are refused. These packages
-   are only for `run_baseline.py`: the task package in `task/` runs inside
-   SIDERIUS's own environment, so its plugins may import only packages that
-   SIDERIUS installs.
-
-   Optionally (a bonus), also provide your model as a SIDERIUS model plugin in
-   `task/plugins/`, as the examples do. The bonus must be PyTorch, because the
-   SIDERIUS trainer is PyTorch; the required baseline above can use any
-   framework in the table.
-
-Data files never go in the folder: data arrays and tables (`.npy`, `.npz`,
-`.h5`, `.parquet`, `.pkl`, `.feather`) are refused, and `baseline/` holds only
-the model files plus small `.py`, `.json`, `.yaml`, `.txt` and `.md` files. Each
-file must be at most 5 MiB and the zip at most 20 MiB.
-
-### 3. Check it
-
-From the kit folder:
-
-```bash
-$SIDERIUS/.venv/bin/python tools/check_submission.py /absolute/path/galaxy_morphology \
-  --task_id t1-007 --siderius $SIDERIUS --download --retrain --report check-report.json
-```
-
-Replace `t1-007` with your task's id from the portal; the checker registers
-the task in SIDERIUS under that id. Without `--task_id` it uses a local working
-id made from the folder name and says so. Use `--data_dir DIR` instead of `--download` if the Zenodo files are already
-on disk in `DIR`. `--retrain` retrains your baseline, so it takes as long as
-your training; leave it out for a quick check.
-
-If you have `baseline/requirements.txt`, the checker builds a separate Python
-environment for your baseline with uv: SIDERIUS (with its own locked package
-versions) plus your pinned packages. This needs network access. The first time,
-uv downloads SIDERIUS's dependencies, mostly PyTorch and its CUDA libraries
-(several GB; the environment takes about 7.6 GB of disk); later runs reuse uv's
-cache and take seconds. Without the file, your baseline runs in the SIDERIUS
-environment directly.
-
-The checker prints one line per step and a verdict, for example:
+Open your coding agent and paste this. Replace the brackets with what you know;
+it is fine to start with an incomplete idea.
 
 ```text
-task id: t1-007 (portal-assigned task id); folder: galaxy_morphology
-[PASS]   1 package: layout, sizes, file types, card and JSON schemas are valid
-[PASS]  2a zenodo_record: record 1234567 found; declared files match Zenodo's names, sizes and md5
-[PASS]  2b data_files: fetch_data.py downloaded and processed the Zenodo files: 2 file(s) in the data folder
-[PASS] 3.0 siderius_version: SIDERIUS 1.0.0 at 1ab94b5101f7 includes 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de
-[PASS]  3a siderius_admission: init, add-task --manifest --task-id t1-007 --no-gpu and check accepted the task
-[PASS]  3b siderius_composition: composed: primary metric accuracy (higher), 1 secondary, Health declared
-[PASS] 4.0 baseline_model: pytorch/pt: initial and final model pass the format checks
-[PASS] 4.1 baseline_environment: no baseline/requirements.txt: the baseline runs in the SIDERIUS venv
-[PASS]  4a baseline_evaluate: evaluating the final model reproduces every reported metric within its tolerance
-[PASS]  4b baseline_retrain: retraining with seed 20261104 from the initial model reproduces every reported metric within its tolerance
-verdict: PASS  (zip sha256 <64 hex characters>, <size> bytes)
+Help me design a scientific ML challenge for The Galileo Hackathon.
+Use this kit: https://github.com/yuema137/siderius-hackathon
+Read README.md, AGENTS.md, and SPEC.md first.
+
+My scientific question: [what I want to understand]
+My data: [a link, local files, or a simulation I could use]
+My available compute and time: [what I can use]
+
+Discuss the science with me before coding. Suggest 2–3 possible
+challenges and explain what each could teach us. Help me choose
+inputs, outputs, independent samples, a fair data split, meaningful
+metrics, and a simple baseline. Ask about missing information.
+Keep the explanations accessible; I may be new to ML.
+
+Once I confirm the design, help set up the supported SIDERIUS version,
+prepare the task package and challenge brief, and run the baseline.
+Ask before large downloads or training. Tell me which files to upload
+to Zenodo and what information you need back from me.
 ```
 
-Success: `verdict: PASS` and exit status 0. `SKIP` means a step did not run;
-its reason says which option enables it. If a required step (3.0, 3a, 3b,
-4.0, 4.1 or 4a) was skipped and nothing failed, the verdict is `INCOMPLETE` (exit status
-2): run again with `--siderius` and `--data_dir` or `--download`, and with
-network access if you have `baseline/requirements.txt`. Only 4b
-(retraining) may be skipped for a `PASS`, but the organizers run it too.
-A `FAIL` verdict (exit status 1) means a step failed; its line names the file or value to fix;
-`check-report.json` holds the full output of each step. The steps are
-described in [SPEC.md section 6](SPEC.md#6-checker).
+**Keep questioning the design.** For example:
 
-To have a coding agent run the check, explain failures and review your task
-design, point it at [skills/track1-task-check/SKILL.md](skills/track1-task-check/SKILL.md).
+> “Could a model get a good score without solving the scientific problem?
+> What would catch that? Could speed, model size, or compute cost also matter?”
 
-### 4. Build the zip
+Your agent can use the [worked example](examples/quickstart_classification/)
+to understand the format. Its tiny synthetic dataset demonstrates packaging;
+it is not the target scale for a scientific challenge. The example's Zenodo
+record is currently a placeholder, so it is not yet a fully downloadable submission.
 
-```bash
-$SIDERIUS/.venv/bin/python tools/make_submission.py /absolute/path/galaxy_morphology \
-  --task_id t1-007 --output_dir /absolute/path/uploads
-```
+## 2 · Handle the human steps
 
-It refuses a folder that fails step 1, leaves out caches such as
-`__pycache__`, and prints:
+| You do | Your agent helps with |
+| --- | --- |
+| **Register for Track 1**, sign in with your registered GitHub account, and create a challenge in the portal. Give your agent its assigned task ID. | Prepare your submission locally while access is arranged. |
+| **Confirm the science and data-sharing rights.** Check permission before redistributing someone else's dataset. | Inspect data, propose a split and evaluation, and identify possible shortcuts. |
+| **Upload and publish the data on [Zenodo](https://zenodo.org).** Choose an appropriate license, then give your agent the record link/DOI. Restricted records must be shared with organizers as described in the kit. | Prepare the data files, record their checksums, and build the download/processing script. |
+| **Approve compute use and review the results.** Make sure the challenge represents your intent. | Run the baseline, explain the results, and save the files needed to reproduce them. |
+| **Upload the final zip to the [submission portal](https://submit.siderius.scitra.org).** Choose whether to permit public release. | Build the zip and give you its checksum to compare with the upload receipt. |
+
+## 3 · Ask your agent to check it
+
+There are two distinct parts:
+
+| Check | What it does |
+| --- | --- |
+| **Deterministic checker** | Checks files, data access and checksums, SIDERIUS loading, and reproduction of reported baseline scores. It makes **no LLM calls**. |
+| **LLM-assisted skill** | Guides your agent through running the checker, explaining failures, fixing problems, and offering advisory feedback about evaluation and leakage. It cannot override the checker result. |
+
+After building your package, paste:
 
 ```text
-wrote /absolute/path/uploads/t1-007.zip
-task id: t1-007
-size <bytes> bytes
-sha256 <64 hex characters>
+My submission is at [folder path]. My Zenodo record is [link].
+My portal task ID is [ID].
+Use skills/track1-task-check/SKILL.md in the hackathon kit.
+
+Run the deterministic checker, explain any failures, and help me fix
+and recheck them. Ask before downloading data or retraining the baseline.
+Report PASS, FAIL, or INCOMPLETE exactly; do not treat skipped required
+checks as a pass or change reported scores just to make checks pass.
+
+Separately review whether evaluation matches my scientific goal,
+whether leakage or shortcuts are possible, and what limitations
+I should document. When the submission is ready,
+use tools/make_submission.py to build the zip. Tell me its location,
+checksum, and anything I still need to do before uploading.
 ```
 
-Building the same folder again gives the same sha256. To rebuild, move the
-old zip away first; it is never overwritten.
+Organizer review is a **manual reproducibility check**, not a judgment of
+scientific merit or research quality. “Verified” only confirms reproducibility
+of the reviewed version. Your agent's advice does not grant that status.
 
-### 5. Upload
+## What goes in the submission?
 
-On the portal at `PORTAL_URL`, open the task you created in step 2 and upload
-the zip to it. Each upload is a new version of that task. Keep the sha256 the
-tool printed; the portal's receipt shows the sha256 it received, and the two
-should match. You can upload new versions until the deadline; the latest
-counts.
-
-## The worked examples
-
-[examples/](examples/) holds the SIDERIUS quickstart task (classify 256
-synthetic rows with four features into two classes) as three submissions that
-differ only in `baseline/`:
-
-| Example | Baseline | Files in `baseline/` |
-| --- | --- | --- |
-| [quickstart_classification](examples/quickstart_classification/) | PyTorch MLP | `init_model.pt`, `final_model.pt`; no `requirements.txt` |
-| [quickstart_classification_sklearn](examples/quickstart_classification_sklearn/) | scikit-learn decision tree | `final_model.skops` only; `requirements.txt` pins scikit-learn and skops |
-| [quickstart_classification_keras](examples/quickstart_classification_keras/) | Keras MLP (Keras 3 on its PyTorch backend) | `init_model.keras`, `final_model.keras`; `requirements.txt` pins keras |
-
-Read [the PyTorch example's TASK_CARD.md](examples/quickstart_classification/TASK_CARD.md) first.
-
-Its four data files are generated, not downloaded. Until the organizers
-publish them on Zenodo, its `data_source.json` holds the placeholder record id
-`ZENODO_RECORD_ID`, so step 2a fails with "placeholder" and every other step
-passes. To check it yourself, generate the files from your SIDERIUS checkout:
-
-```bash
-mkdir -p /absolute/path/example-data
-cd $SIDERIUS/examples/quickstart
-../../.venv/bin/python -c "
-import importlib.util, sys
-spec = importlib.util.spec_from_file_location('qs', 'plugins/_quickstart_task.py')
-qs = importlib.util.module_from_spec(spec); sys.modules['qs'] = qs; spec.loader.exec_module(qs)
-print(qs.write_data_dir(sys.argv[1]))
-" /absolute/path/example-data
-cd -
-$SIDERIUS/.venv/bin/python tools/check_submission.py examples/quickstart_classification \
-  --siderius $SIDERIUS --data_dir /absolute/path/example-data --retrain
-```
-
-Replace `quickstart_classification` with `quickstart_classification_sklearn` or
-`quickstart_classification_keras` to check the others; those two build the
-separate baseline environment described in step 3.
-
-The generator prints the SHA-256 of `shard_0000.csv` to `shard_0003.csv`.
-After the upload, the organizers replace `ZENODO_RECORD_ID` in
-`data_source.json` and `TASK_CARD.md` of each example with the record id.
-
-## Where each choice lives
-
-| Choice | File |
+| Component | Purpose |
 | --- | --- |
-| Question, design rationale, risks, contact | `TASK_CARD.md` |
-| Data location, access, checksums | `data_source.json` |
-| How raw files become the data folder | `fetch_data.py` |
-| Data reading, splits, model input/output, metric, Health checks, parameter limits | `task/task.yaml` and the files it names |
-| Baseline model and training recipe | `baseline/run_baseline.py` (and the optional PyTorch model plugin in `task/plugins/`) |
-| Extra packages the baseline needs | `baseline/requirements.txt` |
-| Framework, model format, hyperparameters, seed, reported scores, tolerance, hardware | `baseline/baseline_result.json` |
+| 📝 **Challenge brief** | Explain the question, evaluation, baseline, and known limitations. |
+| 🔗 **Data access** | Link to Zenodo and provide code to fetch, verify, and prepare the data. |
+| 📦 **Task package** | Tell SIDERIUS how to read inputs, produce outputs, and score results. |
+| ▶️ **Working baseline** | Provide the runnable solution, saved model, and reported results. |
 
-## Running the kit's tests
+Upload **one zip**. The dataset stays on Zenodo. Other participants cannot see
+your submission; public release requires your permission. You can upload a new
+version until the deadline; the latest is reviewed.
 
-```bash
-$SIDERIUS/.venv/bin/python -m pytest tests
-```
+**Technical instructions for your agent:** [AGENTS.md](AGENTS.md) ·
+[Exact specification](SPEC.md) ·
+[Check skill](skills/track1-task-check/SKILL.md) ·
+[Challenge brief template](templates/TASK_CARD.md)
 
-The tests need no network and no SIDERIUS commands.
-
-## License
-
-MIT; see [LICENSE](LICENSE). The worked examples' task package is adapted from
-MIT-licensed SIDERIUS code.
+License: [MIT](LICENSE).
