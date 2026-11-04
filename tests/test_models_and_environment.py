@@ -479,6 +479,12 @@ def test_uv_runs_without_unrelated_caller_variables(
         assert env["UV_INDEX_URL"] == "https://mirror.example/simple" and env["HOME"] != str(Path.home())
 
 
+def test_uv_env_disables_uv_config_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fails if participant code could steer uv through a planted uv.toml in the shared child HOME."""
+    monkeypatch.delenv("UV_NO_CONFIG", raising=False)
+    assert checker.uv_env(tmp_path)["UV_NO_CONFIG"] == "1"
+
+
 def test_uv_env_points_at_the_callers_cache_when_unset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("UV_CACHE_DIR", raising=False)
     monkeypatch.setattr(checker, "default_uv_cache", lambda: "/home/someone/.cache/uv")

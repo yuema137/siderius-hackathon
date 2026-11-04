@@ -199,7 +199,7 @@ task id: t1-007 (portal-assigned task id); folder: galaxy_morphology
 [PASS]   1 package: layout, sizes, file types, card and JSON schemas are valid
 [PASS]  2a zenodo_record: record 1234567 found; declared files match Zenodo's names, sizes and md5
 [PASS]  2b data_files: fetch_data.py downloaded and processed the Zenodo files: 2 file(s) in the data folder
-[PASS] 3.0 siderius_version: SIDERIUS 1.1.0 at 0123456789ab includes v1.1.0
+[PASS] 3.0 siderius_version: SIDERIUS 1.0.0 at 1ab94b5101f7 includes 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de
 [PASS]  3a siderius_admission: init, add-task --manifest --task-id t1-007 --no-gpu and check accepted the task
 [PASS]  3b siderius_composition: composed: primary metric accuracy (higher), 1 secondary, Health declared
 [PASS] 4.0 baseline_model: pytorch/pt: initial and final model pass the format checks

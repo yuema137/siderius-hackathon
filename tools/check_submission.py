@@ -830,6 +830,10 @@ def uv_env(work: Path) -> dict[str, str]:
             env[name] = value
     if "UV_CACHE_DIR" not in env and (cache := default_uv_cache()) is not None:
         env["UV_CACHE_DIR"] = cache
+    # Participant code (fetch_data.py, task plugins) shares child_home and could
+    # plant a uv.toml there that redirects the first install pass to another
+    # index; uv must read no configuration file at all.
+    env["UV_NO_CONFIG"] = "1"
     return env
 
 

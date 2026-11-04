@@ -42,7 +42,7 @@ PLACEHOLDER_RECORD_ID = "ZENODO_RECORD_ID"
 #: command-line option by organizers' shell commands (same rule as the portal).
 FOLDER_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,79}")
 #: Task ids are assigned by the submission portal when the author creates a task.
-PORTAL_TASK_ID_PATTERN = re.compile(r"t1-[0-9]{3,}")
+PORTAL_TASK_ID_PATTERN = re.compile(r"t1-[0-9]{3,77}")
 LOCAL_ID_LABEL = "local working id (the portal assigns the real id)"
 PORTAL_ID_LABEL = "portal-assigned task id"
 
