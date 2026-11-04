@@ -24,9 +24,10 @@ Two kinds of output, never mixed:
 1. Identify the submission folder (any working name) or zip, the task id the
    portal assigned (`t1-NNN`, passed as `--task_id`; the folder name is not the
    task id, and without `--task_id` the checker uses a labelled local working id), the SIDERIUS checkout
-   (`--siderius`: <https://github.com/yuema137/SIDERIUS> at commit
-   `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de` or later, or the 1.1.0 tag once
-   published, with `.venv/bin/python` from `uv sync --group dev --frozen`) and where the data is: already downloaded
+   (`--siderius`: <https://github.com/yuema137/SIDERIUS> v1.1.0 or later; the
+   minimum is `MIN_SIDERIUS` in `tools/submission_rules.py`, commit
+   `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de` until the tag exists; step 3.0
+   enforces it; with `.venv/bin/python` from `uv sync --group dev --frozen`) and where the data is: already downloaded
    (`--data_dir`) or to be downloaded (`--download`). Ask only for what you
    cannot find; reuse paths the author already gave.
 2. Read SPEC.md sections 1 to 6 and the author's `TASK_CARD.md`,
@@ -58,7 +59,7 @@ Read the printed lines and the report JSON (`steps[].details` holds problem
 lists, command output tails and metric comparisons). Record the exact command,
 exit status and verdict. Use the exit status, not your reading of the text, as
 the verdict: 0 is `PASS`, 1 is `FAIL`, 2 is `INCOMPLETE` (nothing failed but a
-required step, 3a, 3b, 4.0, 4.1 or 4a, was skipped). Never report `INCOMPLETE` as a
+required step, 3.0, 3a, 3b, 4.0, 4.1 or 4a, was skipped). Never report `INCOMPLETE` as a
 pass.
 
 What a PASS means: 2b, 4a and 4b passing shows that the author's scripts ran
@@ -82,6 +83,7 @@ Present the result as a table of step, status and reason, then:
 | 1 | zip not unpacked (over 20 MB, a member over 5 MB, duplicate names, malformed); data file in the package; model file outside `baseline/` or an unexpected file inside it; missing `final_model`; `init_model` missing (PyTorch, TensorFlow/Keras) or present (classical models); `model_format` not allowed for `framework` or not matching the file; invalid `requirements.txt` line; file > 5 MB; missing heading or empty section; card lacks the DOI; schema error naming a field | check the folder, then rebuild the zip with `tools/make_submission.py`; move data to Zenodo and read it via `fetch_data.py`; name the models `baseline/final_model.<format>` (and `init_model.<format>` for neural networks) in a format from SPEC.md section 4.3; set `framework`/`model_format` in `baseline_result.json`; pin every requirement as `name==version` without URLs, paths or options; split or shrink the file; fill the section; copy the DOI from `data_source.json` into `## Data`; correct the named field per SPEC.md section 2 or 4.2 |
 | 2a | placeholder id; HTTP 404; resolves to another id; md5/size/license/access mismatch | publish the record and copy its version id (not the concept id) and DOI; copy name, size and md5 from Zenodo's file list; align `license`/`access` with the Zenodo record |
 | 2b | md5 differs for a `--data_dir` file; `fetch_data.py` non-zero exit or wrote nothing | re-download or correct `data_source.json`; read `details.output_tail` for the traceback and fix the script; make sure it writes into `--output_dir` |
+| 3.0 | the SIDERIUS checkout is older than `MIN_SIDERIUS`, not a git checkout, or does not know the ref | `git fetch --tags`, then check out `MIN_SIDERIUS` or a later revision and rerun `uv sync --group dev --frozen` |
 | 3a | `init` refused (permissions); `add-task`/`check` names a field or file | the checker creates private folders itself, so an `init` refusal is an environment problem to report; otherwise fix the named manifest field or file inside `task/` (every path relative to `task/`, nothing outside it) |
 | 3b | `TaskCompositionError` naming a section, file or symbol | fix that `task.yaml` section; see the SIDERIUS [task composition reference](https://github.com/yuema137/SIDERIUS/blob/master/docs/reference/task-composition.md) |
 | 4.0 | an artifact fails its format check (SPEC.md section 4.3): `.pt` does not load with `torch.load(weights_only=True)` or is not a flat state dict; `.keras`/`.skops` archive lacks its index files; wrong signature for `.weights.h5`, `.cbm`, `.ubj`, `.txt`, `.onnx`; final equals initial | re-save with the framework's own saver (`torch.save(model.state_dict(), ...)`, `model.save("final_model.keras")`, `skops.io.dump`, `booster.save_model(...)`); save the trained model as final. `.joblib`/`.pkl` are never loaded by the checker; recommend `.skops` instead |

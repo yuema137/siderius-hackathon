@@ -443,6 +443,7 @@ def test_without_siderius_or_data_the_dependent_steps_skip(submission: Path) -> 
         "1": "PASS",
         "2a": "FAIL",
         "2b": "SKIP",
+        "3.0": "SKIP",
         "3a": "SKIP",
         "3b": "SKIP",
         "4.0": "SKIP",
@@ -706,3 +707,62 @@ def test_make_submission_names_the_zip_after_the_portal_id(submission: Path, tmp
         assert all(name.startswith("quickstart_classification/") for name in archive.namelist())
     with pytest.raises(ValueError, match="not a portal task id"):
         make_submission.make(submission, tmp_path, "007")
+
+
+# -- minimum SIDERIUS revision (step 3.0) ---------------------------------------
+
+
+def _git(repo: Path, *arguments: str) -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@example.org", *arguments],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+@pytest.fixture
+def history(tmp_path: Path) -> tuple[Path, str, str]:
+    """A checkout with two commits: ``(repo, older, newer)``; HEAD is ``newer``."""
+    repo = tmp_path / "siderius"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "pyproject.toml").write_text('[project]\nname = "siderius"\nversion = "1.0.0"\n')
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "older")
+    older = _git(repo, "rev-parse", "HEAD")
+    (repo / "pyproject.toml").write_text('[project]\nname = "siderius"\nversion = "1.1.0"\n')
+    _git(repo, "commit", "-q", "-am", "newer")
+    return repo, older, _git(repo, "rev-parse", "HEAD")
+
+
+def test_checkout_containing_the_minimum_passes(history, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, older, newer = history
+    for minimum in (older, newer):
+        monkeypatch.setattr(checker, "MIN_SIDERIUS", minimum)
+        step = checker.step_siderius_version(repo, checker.siderius_identity(repo))
+        assert step.status == "PASS", step.reason
+        assert step.details["version"] == "1.1.0" and step.details["git_revision"] == newer
+
+
+def test_checkout_older_than_the_minimum_fails(history, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, older, newer = history
+    _git(repo, "checkout", "-q", older)
+    monkeypatch.setattr(checker, "MIN_SIDERIUS", newer)
+    step = checker.step_siderius_version(repo, checker.siderius_identity(repo))
+    assert step.status == "FAIL" and "is older than the required" in step.reason
+
+
+def test_unknown_minimum_ref_fails_with_fetch_advice(history, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, _, _ = history
+    monkeypatch.setattr(checker, "MIN_SIDERIUS", "v1.1.0")
+    step = checker.step_siderius_version(repo, checker.siderius_identity(repo))
+    assert step.status == "FAIL" and "update your SIDERIUS checkout: git fetch --tags" in step.reason
+
+
+def test_non_git_checkout_fails(tmp_path: Path) -> None:
+    step = checker.step_siderius_version(tmp_path, None)
+    assert step.status == "FAIL" and "not a git checkout" in step.reason
+

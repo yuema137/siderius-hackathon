@@ -6,7 +6,7 @@ Usage::
         [--data_dir DIR] [--download] [--retrain] [--report out.json]
 
 Steps (each PASS, FAIL or SKIP with a reason). Verdict and exit status:
-PASS (0) when no step fails and the required steps 3a, 3b, 4.0, 4.1 and 4a ran;
+PASS (0) when no step fails and the required steps 3.0, 3a, 3b, 4.0, 4.1 and 4a ran;
 FAIL (1) when any step fails; INCOMPLETE (2) when nothing failed but a required
 step was skipped (4b may be skipped).
 
@@ -15,6 +15,7 @@ step was skipped (4b may be skipped).
     2a  zenodo_record         the Zenodo record exists and lists the declared files
     2b  data_files            --data_dir files match data_source.json and fetch_data.py
                               processes them; or --download runs fetch_data.py
+    3.0 siderius_version      MIN_SIDERIUS is an ancestor of the --siderius checkout's HEAD
     3a  siderius_admission    console init + add-task --manifest --no-gpu + check
     3b  siderius_composition  the SIDERIUS composer loads task/task.yaml and its plugins
     4.0 baseline_model        init/final model artifacts: format-aware sanity checks that
@@ -66,6 +67,7 @@ from submission_rules import (  # noqa: E402
     REQUIREMENTS,
     LOCAL_ID_LABEL,
     PORTAL_ID_LABEL,
+    MIN_SIDERIUS,
     MetricsFile,
     ModelArtifact,
     StaticResult,
@@ -88,7 +90,7 @@ OUTPUT_TAIL_BYTES = 64 * 1024
 #: Bound on waiting for a killed process group to be reaped.
 KILL_WAIT_SECONDS = 10.0
 #: Steps that must run for a PASS verdict; 4b (retrain) is optional.
-REQUIRED_STEPS = ("3a", "3b", "4.0", "4.1", "4a")
+REQUIRED_STEPS = ("3.0", "3a", "3b", "4.0", "4.1", "4a")
 PASSED_ENV = (
     "CUDA_VISIBLE_DEVICES",
     "LC_ALL",
@@ -423,6 +425,55 @@ def siderius_identity(checkout: Path) -> dict[str, Any]:
     except (OSError, subprocess.SubprocessError):
         identity["git_revision"] = None
     return identity
+
+
+def _git(checkout: Path, *arguments: str) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(checkout), *arguments], capture_output=True, text=True, timeout=60, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def step_siderius_version(checkout: Path | None, identity: dict[str, Any] | None) -> Step:
+    """FAIL unless MIN_SIDERIUS is an ancestor of the checkout's HEAD. Fetches nothing."""
+    name = "siderius_version"
+    if checkout is None:
+        return Step("3.0", name, "SKIP", "pass --siderius <checkout>")
+    minimum = MIN_SIDERIUS
+    details: dict[str, Any] = {"minimum": minimum, **(identity or {})}
+    head = _git(checkout, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+    if head is None or head.returncode != 0:
+        return Step(
+            "3.0", name, "FAIL", f"{checkout} is not a git checkout; cannot verify the SIDERIUS version", details
+        )
+    known = _git(checkout, "rev-parse", "--verify", "--quiet", f"{minimum}^{{commit}}")
+    if known is None or known.returncode != 0:
+        return Step(
+            "3.0",
+            name,
+            "FAIL",
+            f"the required SIDERIUS revision {minimum} is unknown in {checkout}; "
+            "update your SIDERIUS checkout: git fetch --tags",
+            details,
+        )
+    ancestor = _git(checkout, "merge-base", "--is-ancestor", minimum, "HEAD")
+    revision = details.get("git_revision") or head.stdout.strip()
+    if ancestor is not None and ancestor.returncode == 0:
+        return Step(
+            "3.0", name, "PASS", f"SIDERIUS {details.get('version')} at {revision[:12]} includes {minimum}", details
+        )
+    if ancestor is not None and ancestor.returncode == 1:
+        return Step(
+            "3.0",
+            name,
+            "FAIL",
+            f"SIDERIUS at {revision[:12]} is older than the required {minimum}; check out {minimum} or later",
+            details,
+        )
+    details["git_output"] = (ancestor.stderr if ancestor is not None else "git did not run").strip()
+    return Step("3.0", name, "FAIL", "git merge-base --is-ancestor failed; see details.git_output", details)
 
 
 def bwrap_status() -> str:
@@ -1167,6 +1218,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 STEP_NAMES = (
     ("2a", "zenodo_record"),
     ("2b", "data_files"),
+    ("3.0", "siderius_version"),
     ("3a", "siderius_admission"),
     ("3b", "siderius_composition"),
     ("4.0", "baseline_model"),
@@ -1211,6 +1263,8 @@ def check(args: argparse.Namespace, fetch: Fetch | None = None) -> dict[str, Any
             steps = [step_package(opened.folder, static, opened.zip_bytes, opened.problems)]
             steps.append(step_zenodo_record(static.data_source, fetch))
             steps.append(step_data_files(ctx))
+            checkout = Path(args.siderius).resolve() if args.siderius is not None else None
+            steps.append(step_siderius_version(checkout, identity))
             steps.append(step_admission(ctx))
             steps.append(step_composition(ctx))
             steps.append(step_model(ctx))

@@ -8,10 +8,12 @@ When this file and the code disagree, the code is the executed behavior and
 the disagreement is a defect to report. Kit version 1.0.0.
 
 A submission is a **task package only**: a scientific ML task that SIDERIUS can
-run in Track 2. The reference SIDERIUS is <https://github.com/yuema137/SIDERIUS>
-at commit `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de` or later (its
-`pyproject.toml` still says 1.0.0); the 1.1.0 release tag replaces the commit
-once published. The checker records the version and git revision it used.
+run in Track 2. Submissions must be built and checked with SIDERIUS
+(<https://github.com/yuema137/SIDERIUS>) **v1.1.0 or later**. The minimum is the
+single constant `MIN_SIDERIUS` in `tools/submission_rules.py`, a git ref: until
+the `v1.1.0` tag exists it is commit `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de`
+(whose `pyproject.toml` still says 1.0.0); at release it becomes `v1.1.0`.
+Step 3.0 enforces it; the report records the checkout's version and revision.
 A submission contains no workflow, no data and no credentials; the data lives
 on Zenodo.
 
@@ -322,7 +324,7 @@ status:
 
 | Verdict | Exit | When |
 | --- | --- | --- |
-| `PASS` | 0 | no step FAILs and the required steps 3a, 3b, 4.0, 4.1 and 4a ran |
+| `PASS` | 0 | no step FAILs and the required steps 3.0, 3a, 3b, 4.0, 4.1 and 4a ran |
 | `FAIL` | 1 | any step FAILs |
 | `INCOMPLETE` | 2 | no step FAILs but a required step was SKIPPED (4b may be skipped) |
 
@@ -345,6 +347,7 @@ build from a folder; null when not measured), `zip_bytes`, the SIDERIUS
 | `1` package | section 1 layout and limits hold; JSON files match their schemas; card headings present and non-empty; card states the DOI | never |
 | `2a` zenodo_record | `GET https://zenodo.org/api/records/<id>` returns 200; the resolved `id` equals the declared id; DOI, access and license agree; every declared file is listed with the same size and `md5:` checksum. Restricted records whose file list is hidden pass with a note | `data_source.json` invalid |
 | `2b` data_files | `--data_dir`: every declared file is there with matching size and md5, then `fetch_data.py --source_dir <data_dir>` exits 0 and writes at least one file. `--download`: `fetch_data.py` exits 0 and writes at least one file | neither flag; or `--download` on a restricted record without `share_link` |
+| `3.0` siderius_version | `git -C <checkout> merge-base --is-ancestor <MIN_SIDERIUS> HEAD` succeeds (nothing is fetched). FAIL when the checkout is older, when it is not a git checkout, or when `MIN_SIDERIUS` is unknown there ("update your SIDERIUS checkout: git fetch --tags"). Details record `minimum`, the checkout's `pyproject.toml` `version` and `git_revision` | no `--siderius` |
 | `3a` siderius_admission | in a private temporary folder: `candidate_console init --workspace ... --credential-file <mode-600 {}>`, `task/` copied to `tasks/<id>/`, processed data (or an empty folder) to `data/<id>/`, `add-task --config ... --manifest ... --task-id <id> --no-gpu`, `check --config ...` all exit 0 | no `--siderius`; not Linux |
 | `3b` siderius_composition | `workflows.task_composition.compose_run_task_bindings(task.yaml)` succeeds; reports primary/secondary metric ids and directions | no `--siderius` |
 | `4.0` baseline_model | every model artifact passes its section 4.3 format check; the final model differs from the initial model | final model or `baseline_result.json` missing/invalid; `.pt`/`.onnx` without `--siderius` |
