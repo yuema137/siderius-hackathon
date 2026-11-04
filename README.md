@@ -1,6 +1,15 @@
-# Create a scientific challenge
+<p align="center">
+  <a href="https://siderius.scitra.org/hackathon">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/siderius-dark.svg">
+      <img src="assets/siderius-light.svg" alt="SIDERIUS" width="360">
+    </picture>
+  </a>
+</p>
 
-**The Galileo Hackathon · Track 1**
+# Track 1 · Create a scientific challenge
+
+**The Galileo Hackathon — bring your scientific curiosity. Your agent helps with the code.**
 
 Bring a scientific question that you want others to explore with machine learning.
 Your challenge gives them **data, a clear goal, a fair evaluation, and a working
@@ -22,7 +31,11 @@ flowchart LR
     C --> U["📦 Upload your challenge"]
 ```
 
-## Start with the science
+## Start with a question, not a leaderboard
+
+What would count as progress in **your science**? Detecting a weaker signal,
+predicting a useful material property, or making a simulation cheaper can all
+be meaningful goals. The best metric need not be the one AI papers usually use.
 
 A good challenge is more than “get a higher score.” Decide:
 
@@ -51,15 +64,22 @@ My scientific question: [what I want to understand]
 My data: [a link, local files, or a simulation I could use]
 My available compute and time: [what I can use]
 
-First help me decide the inputs, outputs, independent samples,
-train/test split, evaluation, and a simple baseline. Ask about missing
-information and explain the choices in plain language before coding.
+Discuss the science with me before coding. Suggest 2–3 possible
+challenges and explain what each could teach us. Help me choose
+inputs, outputs, independent samples, a fair data split, meaningful
+metrics, and a simple baseline. Ask about missing information.
+Keep the explanations accessible; I may be new to ML.
 
 Once I confirm the design, help set up the supported SIDERIUS version,
 prepare the task package and challenge brief, and run the baseline.
 Ask before large downloads or training. Tell me which files to upload
 to Zenodo and what information you need back from me.
 ```
+
+**Keep questioning the design.** For example:
+
+> “Could a model get a good score without solving the scientific problem?
+> What would catch that? Could speed, model size, or compute cost also matter?”
 
 Your agent can use the [worked example](examples/quickstart_classification/)
 to understand the format. Its tiny synthetic dataset demonstrates packaging;
@@ -70,7 +90,7 @@ record is currently a placeholder, so it is not yet a fully downloadable submiss
 
 | You do | Your agent helps with |
 | --- | --- |
-| **Register for Track 1** to receive submission access; sign in with GitHub. | Prepare your submission locally while access is arranged. |
+| **Register for Track 1**, sign in with your registered GitHub account, and create a challenge in the portal. Give your agent its assigned task ID. | Prepare your submission locally while access is arranged. |
 | **Confirm the science and data-sharing rights.** Check permission before redistributing someone else's dataset. | Inspect data, propose a split and evaluation, and identify possible shortcuts. |
 | **Upload and publish the data on [Zenodo](https://zenodo.org).** Choose an appropriate license, then give your agent the record link/DOI. Restricted records must be shared with organizers as described in the kit. | Prepare the data files, record their checksums, and build the download/processing script. |
 | **Approve compute use and review the results.** Make sure the challenge represents your intent. | Run the baseline, explain the results, and save the files needed to reproduce them. |
@@ -89,6 +109,7 @@ After building your package, paste:
 
 ```text
 My submission is at [folder path]. My Zenodo record is [link].
+My portal task ID is [ID].
 Use skills/track1-task-check/SKILL.md in the hackathon kit.
 
 Run the deterministic checker, explain any failures, and help me fix
@@ -96,7 +117,9 @@ and recheck them. Ask before downloading data or retraining the baseline.
 Report PASS, FAIL, or INCOMPLETE exactly; do not treat skipped required
 checks as a pass or change reported scores just to make checks pass.
 
-Give advisory feedback separately. When the submission is ready,
+Separately review whether evaluation matches my scientific goal,
+whether leakage or shortcuts are possible, and what limitations
+I should document. When the submission is ready,
 use tools/make_submission.py to build the zip. Tell me its location,
 checksum, and anything I still need to do before uploading.
 ```
