@@ -10,9 +10,8 @@ the disagreement is a defect to report. Kit version 1.0.0.
 A submission is a **task package only**: a scientific ML task that SIDERIUS can
 run in Track 2. Submissions must be built and checked with SIDERIUS
 (<https://github.com/yuema137/SIDERIUS>) **v1.1.0 or later**. The minimum is the
-single constant `MIN_SIDERIUS` in `tools/submission_rules.py`, a git ref: until
-the `v1.1.0` tag exists it is commit `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de`
-(whose `pyproject.toml` still says 1.0.0); at release it becomes `v1.1.0`.
+single constant `MIN_SIDERIUS` in `tools/submission_rules.py`, set to the
+published release tag `v1.1.0`.
 Step 3.0 enforces it; the report records the checkout's version and revision.
 A submission contains no workflow, no data and no credentials; the data lives
 on Zenodo.
@@ -60,7 +59,7 @@ A TensorFlow SavedModel is a folder: `baseline/final_model/` holding
   `siderius_workspace/tasks/<task id>/` and the processed data to
   `siderius_workspace/data/<task id>/` and runs `add-task --task-id <task id>`.
 - `task/` follows the SIDERIUS
-  [task composition reference](https://github.com/yuema137/SIDERIUS/blob/master/docs/reference/task-composition.md).
+  [task composition reference](https://github.com/yuema137/SIDERIUS/blob/v1.1.0/docs/reference/task-composition.md).
   Required manifest sections: `task_data_path`, `dataset_profile`, `metric`
   (declaration + implementation), `task_health` (`config:` or `none: true`),
   `task_config`. Optional and encouraged: `secondary_metrics`, `evaluation`,

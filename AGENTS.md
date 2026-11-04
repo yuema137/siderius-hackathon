@@ -70,13 +70,13 @@ free research data archive that gives every dataset a permanent DOI.
 ```bash
 git clone https://github.com/yuema137/SIDERIUS.git
 cd SIDERIUS
-git checkout 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de   # minimum SIDERIUS; at release: git checkout v1.1.0
+git checkout v1.1.0
 uv sync --group dev --frozen
 ```
 
-Until the v1.1.0 release tag is published, the minimum is that commit; at
-release the requirement becomes "v1.1.0 or later" and step 0 checks out
-`v1.1.0`. Any later revision also works. The checker enforces the minimum: its
+Use the published v1.1.0 release for this event. The checker requires the
+`v1.1.0` tag to be an ancestor of the checkout (later revisions are accepted,
+but these instructions target the release). Its
 step 3.0 fails when your checkout's history does not contain it (run
 `git fetch --tags` if the checker says the revision is unknown). It also
 records the SIDERIUS version and git revision it ran with in its report.
@@ -148,9 +148,9 @@ galaxy_morphology/
 4. **Write the SIDERIUS task package in `task/`.** It tells SIDERIUS how to read
    your data, the model input and output, the metric and the Health checks.
    For CSV classification data, start from the example's `task/` or the
-   SIDERIUS [CSV classification template](https://github.com/yuema137/SIDERIUS/blob/master/examples/task_templates/csv_classification/README.md);
+   SIDERIUS [CSV classification template](https://github.com/yuema137/SIDERIUS/blob/v1.1.0/examples/task_templates/csv_classification/README.md);
    for anything else, follow the SIDERIUS
-   [task definition guide](https://github.com/yuema137/SIDERIUS/blob/master/docs/guides/define-a-task.md).
+   [task definition guide](https://github.com/yuema137/SIDERIUS/blob/v1.1.0/docs/guides/define-a-task.md).
    A coding agent opened in your SIDERIUS checkout can write it with you.
 5. **Write and run the baseline.** The baseline shows the task is solvable
    and sets the score to beat. Use any of these frameworks; the file name is
@@ -224,7 +224,7 @@ task id: t1-007 (portal-assigned task id); folder: galaxy_morphology
 [PASS]   1 package: layout, sizes, file types, card and JSON schemas are valid
 [PASS]  2a zenodo_record: record 1234567 found; declared files match Zenodo's names, sizes and md5
 [PASS]  2b data_files: fetch_data.py downloaded and processed the Zenodo files: 2 file(s) in the data folder
-[PASS] 3.0 siderius_version: SIDERIUS 1.0.0 at 1ab94b5101f7 includes 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de
+[PASS] 3.0 siderius_version: SIDERIUS 1.1.0 at 5ccb436f88e6 includes v1.1.0
 [PASS]  3a siderius_admission: init, add-task --manifest --task-id t1-007 --no-gpu and check accepted the task
 [PASS]  3b siderius_composition: composed: primary metric accuracy (higher), 1 secondary, Health declared
 [PASS] 4.0 baseline_model: pytorch/pt: initial and final model pass the format checks

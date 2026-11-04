@@ -25,8 +25,8 @@ Two kinds of output, never mixed:
    portal assigned (`t1-NNN`, passed as `--task_id`; the folder name is not the
    task id, and without `--task_id` the checker uses a labelled local working id), the SIDERIUS checkout
    (`--siderius`: <https://github.com/yuema137/SIDERIUS> v1.1.0 or later; the
-   minimum is `MIN_SIDERIUS` in `tools/submission_rules.py`, commit
-   `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de` until the tag exists; step 3.0
+   minimum is `MIN_SIDERIUS` in `tools/submission_rules.py`, the published
+   `v1.1.0` tag; step 3.0
    enforces it; with `.venv/bin/python` from `uv sync --group dev --frozen`) and where the data is: already downloaded
    (`--data_dir`) or to be downloaded (`--download`). Ask only for what you
    cannot find; reuse paths the author already gave.
@@ -85,7 +85,7 @@ Present the result as a table of step, status and reason, then:
 | 2b | md5 differs for a `--data_dir` file; `fetch_data.py` non-zero exit or wrote nothing | re-download or correct `data_source.json`; read `details.output_tail` for the traceback and fix the script; make sure it writes into `--output_dir` |
 | 3.0 | the SIDERIUS checkout is older than `MIN_SIDERIUS`, not a git checkout, or does not know the ref | `git fetch --tags`, then check out `MIN_SIDERIUS` or a later revision and rerun `uv sync --group dev --frozen` |
 | 3a | `init` refused (permissions); `add-task`/`check` names a field or file | the checker creates private folders itself, so an `init` refusal is an environment problem to report; otherwise fix the named manifest field or file inside `task/` (every path relative to `task/`, nothing outside it) |
-| 3b | `TaskCompositionError` naming a section, file or symbol | fix that `task.yaml` section; see the SIDERIUS [task composition reference](https://github.com/yuema137/SIDERIUS/blob/master/docs/reference/task-composition.md) |
+| 3b | `TaskCompositionError` naming a section, file or symbol | fix that `task.yaml` section; see the SIDERIUS [task composition reference](https://github.com/yuema137/SIDERIUS/blob/v1.1.0/docs/reference/task-composition.md) |
 | 4.0 | an artifact fails its format check (SPEC.md section 4.3): `.pt` does not load with `torch.load(weights_only=True)` or is not a flat state dict; `.keras`/`.skops` archive lacks its index files; wrong signature for `.weights.h5`, `.cbm`, `.ubj`, `.txt`, `.onnx`; final equals initial | re-save with the framework's own saver (`torch.save(model.state_dict(), ...)`, `model.save("final_model.keras")`, `skops.io.dump`, `booster.save_model(...)`); save the trained model as final. `.joblib`/`.pkl` are never loaded by the checker; recommend `.skops` instead |
 | 4.1 | a pin (or a dependency of it) has no wheel, so it would need a source build, which is refused; or a pin conflicts with SIDERIUS's locked versions | pin a version published as a wheel for Linux/Python 3.12, or choose another package; change a conflicting pin to a version compatible with SIDERIUS's `uv.lock` (read `details.output_tail`). A SKIP for network or missing `uv` is an environment limitation. Remember `requirements.txt` serves only `run_baseline.py`: `task/` plugins may import only SIDERIUS's packages |
 | 4a/4b | non-zero exit; `metrics.json` ids differ from declared ids; value outside tolerance | read `output_tail`; key `metrics.json` by the declared metric ids and compute them with the task's metric plugin; make training seed-deterministic, or set a tolerance that honestly covers the measured spread and state it in the card |

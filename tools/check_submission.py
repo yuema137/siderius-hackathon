@@ -498,7 +498,7 @@ def _private_tree(path: Path) -> None:
 def step_admission(ctx: Context) -> Step:
     name = "siderius_admission"
     if ctx.python is None:
-        return Step("3a", name, "SKIP", "pass --siderius <checkout> (SIDERIUS at 1ab94b51 or later, after uv sync)")
+        return Step("3a", name, "SKIP", "pass --siderius <checkout> (SIDERIUS v1.1.0 or later, after uv sync)")
     if not sys.platform.startswith("linux"):
         return Step("3a", name, "SKIP", "the SIDERIUS console runs on Linux only")
     if not (ctx.root / "task" / "task.yaml").is_file():
@@ -1198,7 +1198,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     cli.add_argument(
         "--siderius",
         type=Path,
-        help="SIDERIUS checkout at 1ab94b5101f705f2bd90ba89a21fd10bb2ed98de or later, with .venv "
+        help="SIDERIUS checkout at v1.1.0 or later, with .venv "
         "(uv sync --group dev --frozen)",
     )
     cli.add_argument("--data_dir", type=Path, help="folder holding the Zenodo files, already downloaded")

@@ -35,6 +35,8 @@ flowchart LR
     C --> U["📦 Upload your challenge"]
 ```
 
+**Supported release: [SIDERIUS v1.1.0](https://github.com/yuema137/SIDERIUS/releases/tag/v1.1.0).** Ask your agent to use this release and the [setup instructions](AGENTS.md#before-you-start).
+
 ## Start with a question, not a leaderboard
 
 What would count as progress in **your science**? Detecting a weaker signal,
