@@ -153,7 +153,11 @@ galaxy_morphology/
    [task definition guide](https://github.com/yuema137/SIDERIUS/blob/v1.1.0/docs/guides/define-a-task.md).
    A coding agent opened in your SIDERIUS checkout can write it with you.
 5. **Write and run the baseline.** The baseline shows the task is solvable
-   and sets the score to beat. Use any of these frameworks; the file name is
+   and sets the score to beat. Classical algorithms and rule-based methods are also allowed: use `framework: "classic"`,
+   `model_format: "py"`, and `baseline/final_model.py` with no model weights.
+   Keep the same train/evaluate interface; for a fixed method, train copies the
+   algorithm into its output folder and evaluates it. See SPEC.md, Script baselines.
+   Use any of these frameworks; the file name is
    always `final_model.<format>`:
 
    | Framework | Recommended format | Also allowed |

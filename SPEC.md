@@ -188,8 +188,8 @@ Pydantic model `BaselineResult` (`extra="forbid"`):
 | Field | Type | Rule |
 | --- | --- | --- |
 | `schema_version` | `1` | literal |
-| `framework` | enum | `pytorch`, `tensorflow` (TensorFlow or Keras, any backend), `sklearn`, `xgboost`, `lightgbm`, `catboost`, `other` |
-| `model_format` | enum | the text after `final_model.`: `pt`, `onnx`, `keras`, `weights.h5`, `savedmodel` (folder), `json`, `ubj`, `txt`, `cbm`, `skops`, `joblib`, `pkl`; must be allowed for `framework` (section 4.3) and match the file |
+| `framework` | enum | `classic` (algorithm/script), `pytorch`, `tensorflow` (TensorFlow or Keras, any backend), `sklearn`, `xgboost`, `lightgbm`, `catboost`, `other` |
+| `model_format` | enum | the text after `final_model.`: `py` (Classic / Script), `pt`, `onnx`, `keras`, `weights.h5`, `savedmodel` (folder), `json`, `ubj`, `txt`, `cbm`, `skops`, `joblib`, `pkl`; must be allowed for `framework` (section 4.3) and match the file |
 | `hyperparameters` | object | everything besides the seed needed to retrain (model settings, optimizer, epochs, ...) |
 | `seed` | int | passed as `--seed` in the retrain check |
 | `evaluation_split` | string | the split `metrics.json` is computed on, for example `validation` |
@@ -209,6 +209,7 @@ neural network also starts from `init_model`.
 
 | `framework` | Recommended | Also allowed | `init_model` |
 | --- | --- | --- | --- |
+| `classic` | `.py` (algorithm implementation) | | forbidden |
 | `pytorch` | `pt` | `onnx` | required, same format |
 | `tensorflow` | `keras` | `weights.h5`, `savedmodel`, `onnx` | required, same format |
 | `xgboost` | `json`, `ubj` | | not allowed |
@@ -292,6 +293,22 @@ setup code.
   dominated by PyTorch and its CUDA libraries (several GB; the installed venv
   occupies about 7.6 GB, measured at 1ab94b51), plus your pins. Budget minutes
   and disk accordingly; the `--env_timeout` default is 3600 s.
+
+### Script baselines (no trained model required)
+
+Classical algorithms, numerical methods and rule-based solutions are welcome.
+Use `framework: "classic"`, `model_format: "py"`, and provide the algorithm as
+`baseline/final_model.py`. No weights or `init_model` are required; an initial
+model is refused for this format. Include fixed algorithm settings in
+`hyperparameters` and any required configuration in `baseline/`.
+
+Keep the same `run_baseline.py` interface: `evaluate --model .../final_model.py`
+runs the algorithm and uses the task's metrics to produce `metrics.json`.
+`train` prepares (or copies, for a fixed algorithm) `final_model.py` into its
+output directory and evaluates it there. A fixed method may report zero training
+time. The source syntax check never executes the script; evaluation and rerun
+steps execute the participant's wrapper just as for other baselines. Syntax
+alone does not certify results. All data, size and reproduction rules still apply.
 
 ## 5. `TASK_CARD.md`
 

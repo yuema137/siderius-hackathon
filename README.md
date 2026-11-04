@@ -22,6 +22,8 @@ Looking for inspiration? [Explore the Track 1 guide, datasets, and simulation to
 Bring a scientific question that you want others to explore with machine learning.
 Your challenge gives them **data, a clear goal, a fair evaluation, and a working
 baseline**. A baseline is a simple solution that others can reproduce and improve.
+**It need not be PyTorch or even machine learning:** classical algorithms,
+numerical methods, and rule-based Python scripts are welcome.
 
 **You do not need to write code by hand.** Work with a coding agent such as
 Claude Code or Codex. You make the scientific decisions; your agent helps turn
@@ -141,7 +143,7 @@ of the reviewed version. Your agent's advice does not grant that status.
 | 📝 **Challenge brief** | Explain the question, evaluation, baseline, and known limitations. |
 | 🔗 **Data access** | Link to Zenodo and provide code to fetch, verify, and prepare the data. |
 | 📦 **Task package** | Tell SIDERIUS how to read inputs, produce outputs, and score results. |
-| ▶️ **Working baseline** | Provide the runnable solution, saved model, and reported results. |
+| ▶️ **Working baseline** | Provide a runnable solution, model weights or algorithm code, and reported results. |
 
 Upload **one zip**. The dataset stays on Zenodo. Other participants cannot see
 your submission; public release requires your permission. You can upload a new

@@ -123,7 +123,10 @@ note on a file and line you read; say what you could not verify. Cover:
 5. **Reproducibility and cost.** Seed use in `run_baseline.py`, deterministic
    settings, the GPU and wall time stated, a tolerance that matches the
    measured spread.
-6. **Framework choice and loading safety.** If the baseline uses `.joblib`
+6. **Framework choice and loading safety.** A baseline need not be ML or PyTorch.
+   For `classic` / `py`, require algorithm code in `baseline/final_model.py`, no
+   initial model, and real evaluate/rerun results through the same wrapper.
+   A syntax pass is not evidence of correct scientific behavior. If the baseline uses `.joblib`
    or `.pkl`, suggest `.skops` (scikit-learn) or the framework's native format:
    pickles execute code when loaded. Check that `run_baseline.py` loads models
    safely (`weights_only=True`, Keras safe mode, skops trusted types). The

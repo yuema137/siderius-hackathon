@@ -39,6 +39,7 @@ check untrusted submissions in a disposable machine or container.
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
@@ -682,6 +683,14 @@ def inspect_artifact(root: Path, artifact: ModelArtifact) -> tuple[list[str], st
     if size == 0:
         return [f"{artifact.path} is empty"], "empty"
     head = _head(path)
+    if fmt == "py":
+        try:
+            tree = ast.parse(path.read_bytes(), filename=artifact.path)
+        except (SyntaxError, ValueError, UnicodeError) as error:
+            return [f"{artifact.path}: invalid Python source: {error}"], "py"
+        if not tree.body:
+            return [f"{artifact.path}: Python implementation is empty"], "py"
+        return [], "Python source parsed without execution; evaluation checks behavior"
     if fmt == "pt":
         if _zip_names(path) is None:
             return [f"{artifact.path} is not a torch.save zip archive"], "pt"
@@ -780,6 +789,8 @@ def step_model(ctx: Context) -> Step:
         depth = "onnx header only: onnx not installed; 4a is the real load test"
     elif fmt == "json":
         depth = "JSON structure check only, not loaded; 4a is the real load test"
+    elif fmt == "py":
+        depth = "Python syntax checked without execution; 4a checks results"
     elif fmt in PICKLE_FORMATS:
         depth = "not loaded (pickle); 4a is the real load test"
     else:

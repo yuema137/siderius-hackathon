@@ -73,9 +73,10 @@ MODEL_SUFFIXES = frozenset(
 #: Non-model files allowed inside baseline/ besides the model artifacts.
 BASELINE_CONFIG_SUFFIXES = frozenset({".py", ".json", ".yaml", ".yml", ".txt", ".md"})
 
-FRAMEWORKS = ("pytorch", "tensorflow", "sklearn", "xgboost", "lightgbm", "catboost", "other")
+FRAMEWORKS = ("classic", "pytorch", "tensorflow", "sklearn", "xgboost", "lightgbm", "catboost", "other")
 #: model_format ids: the text after ``final_model.`` (``savedmodel`` is a directory).
 MODEL_FORMATS = (
+    "py",
     "pt",
     "onnx",
     "keras",
@@ -91,6 +92,7 @@ MODEL_FORMATS = (
 )
 #: Allowed formats per framework, recommended first.
 FRAMEWORK_FORMATS: dict[str, tuple[str, ...]] = {
+    "classic": ("py",),
     "pytorch": ("pt", "onnx"),
     "tensorflow": ("keras", "weights.h5", "savedmodel", "onnx"),
     "xgboost": ("json", "ubj"),
@@ -237,9 +239,9 @@ class BaselineResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: Literal[1]
-    framework: Literal["pytorch", "tensorflow", "sklearn", "xgboost", "lightgbm", "catboost", "other"]
+    framework: Literal["classic", "pytorch", "tensorflow", "sklearn", "xgboost", "lightgbm", "catboost", "other"]
     model_format: Literal[
-        "pt", "onnx", "keras", "weights.h5", "savedmodel", "json", "ubj", "txt", "cbm", "skops", "joblib", "pkl"
+        "pt", "onnx", "keras", "weights.h5", "savedmodel", "json", "ubj", "txt", "cbm", "skops", "joblib", "pkl", "py"
     ] = Field(description="suffix of baseline/final_model.<format>; savedmodel is the directory baseline/final_model/")
     hyperparameters: dict[str, Any] = Field(description="everything needed to retrain, with the seed")
     seed: int
@@ -451,6 +453,8 @@ def model_pair_problems(
         problems.append(
             f"{final.path} has format {final.model_format!r} but baseline_result.json says {result.model_format!r}"
         )
+    if result.model_format == "py" and init is not None:
+        problems.append("script baselines must not include an initial model")
     if result.framework in NEURAL_FRAMEWORKS:
         if init is None:
             problems.append(f"framework {result.framework!r} needs baseline/init_model.{result.model_format}")
