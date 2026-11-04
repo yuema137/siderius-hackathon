@@ -64,6 +64,8 @@ from submission_rules import (  # noqa: E402
     DataSource,
     PICKLE_FORMATS,
     REQUIREMENTS,
+    LOCAL_ID_LABEL,
+    PORTAL_ID_LABEL,
     MetricsFile,
     ModelArtifact,
     StaticResult,
@@ -73,6 +75,8 @@ from submission_rules import (  # noqa: E402
     md5_file,
     sha256_bytes,
     list_package_files,
+    local_task_id,
+    portal_task_id_problem,
     zip_member_problems,
 )
 
@@ -119,6 +123,8 @@ class Context:
     processed_data: Path | None = None
     declared_metric_ids: list[str] | None = None
     admission_manifest: Path | None = None
+    #: The id used for SIDERIUS admission: --task_id, or a local id from the folder name.
+    task_id: str = "local-task"
     baseline_python: Path | None = None  # set by step 4.1
 
 
@@ -232,7 +238,7 @@ def marker_result(done: Completed) -> dict[str, Any] | None:
 
 
 def step_package(
-    task_id: str | None, static: StaticResult | None, zip_bytes_size: int | None, zip_problems: list[str]
+    folder: str | None, static: StaticResult | None, zip_bytes_size: int | None, zip_problems: list[str]
 ) -> Step:
     problems = list(zip_problems) + (static.problems if static is not None else [])
     notes = list(static.notes) if static is not None else []
@@ -241,7 +247,7 @@ def step_package(
     elif zip_bytes_size > MAX_ZIP_BYTES:
         problems.append(f"the zip is {zip_bytes_size} bytes; the limit is {MAX_ZIP_BYTES} (20 MB)")
     details = {
-        "task_id": task_id,
+        "folder": folder,
         "files": len(static.files) if static is not None else None,
         "zip_bytes": zip_bytes_size,
         "problems": problems,
@@ -447,7 +453,7 @@ def step_admission(ctx: Context) -> Step:
     if not (ctx.root / "task" / "task.yaml").is_file():
         return Step("3a", name, "SKIP", "task/task.yaml is missing (see step 1)")
     checkout = Path(ctx.args.siderius).resolve()
-    task_id = ctx.root.name
+    task_id = ctx.task_id
     base = ctx.work / "siderius"
     base.mkdir(mode=0o700)
     project = base / "project"
@@ -485,7 +491,17 @@ def step_admission(ctx: Context) -> Step:
     _private_tree(data)
 
     add = run(
-        console + ["add-task", "--config", str(config), "--manifest", str(package / "task.yaml"), "--no-gpu"],
+        console
+        + [
+            "add-task",
+            "--config",
+            str(config),
+            "--manifest",
+            str(package / "task.yaml"),
+            "--task-id",
+            task_id,
+            "--no-gpu",
+        ],
         cwd=checkout,
         timeout=timeout,
         env=env,
@@ -498,7 +514,7 @@ def step_admission(ctx: Context) -> Step:
     if check.returncode != 0:
         return Step("3a", name, "FAIL", f"check {describe(check)}; see details.check.output_tail", details)
     ctx.admission_manifest = package / "task.yaml"
-    reason = f"init, add-task --manifest --no-gpu and check accepted task {task_id}"
+    reason = f"init, add-task --manifest --task-id {task_id} --no-gpu and check accepted the task"
     if details["bwrap"] != "usable":
         reason += f" (note: bubblewrap {details['bwrap']}; SIDERIUS runs need it, these commands do not)"
     return Step("3a", name, "PASS", reason, details)
@@ -977,7 +993,7 @@ def step_retrain(ctx: Context) -> Step:
 class OpenedInput:
     """The submission as the checker sees it before step 1."""
 
-    task_id: str | None
+    folder: str | None  # the zip's top folder / the folder name: the author's working name
     root: Path | None  # None: not unpacked, only step 1 runs
     zip_bytes: int | None
     zip_sha256: str | None
@@ -1054,7 +1070,11 @@ def open_input(path: Path, work: Path) -> OpenedInput:
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     cli = argparse.ArgumentParser(description="Self-check a Track 1 task submission (folder or zip).")
-    cli.add_argument("submission", type=Path, help="the <task_id>/ folder or <task_id>.zip")
+    cli.add_argument("submission", type=Path, help="the submission folder or its zip")
+    cli.add_argument(
+        "--task_id",
+        help="the task id the portal assigned (t1-NNN); default: a local working id from the folder name",
+    )
     cli.add_argument(
         "--siderius",
         type=Path,
@@ -1074,6 +1094,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     args = cli.parse_args(argv)
     if args.data_dir is not None and args.download:
         cli.error("--data_dir and --download are alternatives; pass one")
+    if args.task_id is not None and (problem := portal_task_id_problem(args.task_id)) is not None:
+        cli.error(problem)
     return args
 
 
@@ -1106,6 +1128,7 @@ def check(args: argparse.Namespace, fetch: Fetch | None = None) -> dict[str, Any
     os.chmod(work, 0o700)
     try:
         opened = open_input(args.submission, work)
+        task_id = args.task_id or local_task_id(opened.folder)
         python = None
         identity = None
         if args.siderius is not None:
@@ -1115,12 +1138,12 @@ def check(args: argparse.Namespace, fetch: Fetch | None = None) -> dict[str, Any
                 raise SystemExit(f"{candidate} does not exist; run `uv sync --group dev --frozen` in the checkout")
             python = candidate
         if opened.root is None:
-            steps = [step_package(opened.task_id, None, opened.zip_bytes, opened.problems)]
+            steps = [step_package(opened.folder, None, opened.zip_bytes, opened.problems)]
             steps += [Step(i, n, "SKIP", "the submission was not unpacked (see step 1)") for i, n in STEP_NAMES]
         else:
             static = check_static(opened.root)
-            ctx = Context(root=opened.root, work=work, args=args, static=static, python=python)
-            steps = [step_package(opened.task_id, static, opened.zip_bytes, opened.problems)]
+            ctx = Context(root=opened.root, work=work, args=args, static=static, python=python, task_id=task_id)
+            steps = [step_package(opened.folder, static, opened.zip_bytes, opened.problems)]
             steps.append(step_zenodo_record(static.data_source, fetch))
             steps.append(step_data_files(ctx))
             steps.append(step_admission(ctx))
@@ -1132,7 +1155,9 @@ def check(args: argparse.Namespace, fetch: Fetch | None = None) -> dict[str, Any
         verdict, failed, skipped = verdict_of(steps)
         return {
             "kit_version": KIT_VERSION,
-            "task_id": opened.task_id,
+            "task_id": task_id,
+            "task_id_kind": PORTAL_ID_LABEL if args.task_id else LOCAL_ID_LABEL,
+            "folder": opened.folder,
             "submission": str(args.submission),
             "zip_sha256": opened.zip_sha256,
             "zip_bytes": opened.zip_bytes,
@@ -1155,6 +1180,7 @@ EXIT_STATUS = {"PASS": 0, "FAIL": 1, "INCOMPLETE": 2}
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     report = check(args)
+    print(f"task id: {report['task_id']} ({report['task_id_kind']}); folder: {report['folder']}")
     for step in report["steps"]:
         print(f"[{step['status']:4}] {step['id']:>3} {step['name']}: {step['reason']}")
         for problem in step["details"].get("problems", [])[1:]:

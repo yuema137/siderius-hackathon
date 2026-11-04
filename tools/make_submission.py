@@ -1,8 +1,13 @@
-"""Build <task_id>.zip from a Track 1 submission folder.
+"""Build the upload zip from a Track 1 submission folder.
 
 Usage::
 
-    python tools/make_submission.py <task_dir> [--output_dir DIR]
+    python tools/make_submission.py <task_dir> [--output_dir DIR] [--task_id t1-NNN]
+
+The zip holds one top folder named like ``<task_dir>`` (the author's working
+name; it is not the task id). The portal assigns the task id when the author
+creates the task; with ``--task_id`` the zip file is named ``<task_id>.zip``,
+otherwise ``<folder name>.zip``.
 
 Runs checker step 1 (layout, sizes, file types, TASK_CARD.md, JSON schemas) on
 the folder first and refuses to build if it fails. Cache and editor clutter
@@ -20,11 +25,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from submission_rules import MAX_ZIP_BYTES, build_zip_bytes, check_static, sha256_bytes  # noqa: E402
+from submission_rules import (  # noqa: E402
+    LOCAL_ID_LABEL,
+    MAX_ZIP_BYTES,
+    build_zip_bytes,
+    check_static,
+    portal_task_id_problem,
+    sha256_bytes,
+)
 
 
-def make(task_dir: Path, output_dir: Path) -> tuple[Path, int, str]:
-    """Write ``output_dir/<task_id>.zip``; returns ``(path, bytes, sha256)``.
+def make(task_dir: Path, output_dir: Path, task_id: str | None = None) -> tuple[Path, int, str]:
+    """Write ``output_dir/<task_id or folder name>.zip``; returns ``(path, bytes, sha256)``.
 
     Raises:
         ValueError: step 1 fails, the zip exceeds 20 MB, or the output exists.
@@ -36,7 +48,9 @@ def make(task_dir: Path, output_dir: Path) -> tuple[Path, int, str]:
     payload = build_zip_bytes(root, static.files)
     if len(payload) > MAX_ZIP_BYTES:
         raise ValueError(f"the zip would be {len(payload)} bytes; the limit is {MAX_ZIP_BYTES} (20 MB)")
-    target = output_dir.resolve() / f"{root.name}.zip"
+    if task_id is not None and (problem := portal_task_id_problem(task_id)) is not None:
+        raise ValueError(problem)
+    target = output_dir.resolve() / f"{task_id or root.name}.zip"
     try:
         descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     except FileExistsError:
@@ -47,8 +61,9 @@ def make(task_dir: Path, output_dir: Path) -> tuple[Path, int, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    cli = argparse.ArgumentParser(description="Build <task_id>.zip from a submission folder.")
-    cli.add_argument("task_dir", type=Path, help="the <task_id>/ submission folder")
+    cli = argparse.ArgumentParser(description="Build the upload zip from a submission folder.")
+    cli.add_argument("task_dir", type=Path, help="the submission folder (any safe working name)")
+    cli.add_argument("--task_id", help="the task id the portal assigned (t1-NNN); names the zip file")
     cli.add_argument("--output_dir", type=Path, default=Path.cwd(), help="existing folder (default: current)")
     args = cli.parse_args(argv)
     if not args.task_dir.is_dir():
@@ -58,11 +73,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"make_submission refused: --output_dir {args.output_dir} is not an existing folder", file=sys.stderr)
         return 1
     try:
-        target, size, digest = make(args.task_dir, args.output_dir)
+        target, size, digest = make(args.task_dir, args.output_dir, args.task_id)
     except ValueError as error:
         print(f"make_submission refused: {error}", file=sys.stderr)
         return 1
     print(f"wrote {target}")
+    if args.task_id is None:
+        print(f"task id: not given; upload this zip to the task you created on the portal ({LOCAL_ID_LABEL})")
+    else:
+        print(f"task id: {args.task_id}")
     print(f"size {size} bytes")
     print(f"sha256 {digest}")
     return 0

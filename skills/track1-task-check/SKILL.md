@@ -21,7 +21,9 @@ Two kinds of output, never mixed:
 
 ## Before running anything
 
-1. Identify the submission folder (`<task_id>/`) or zip, the SIDERIUS checkout
+1. Identify the submission folder (any working name) or zip, the task id the
+   portal assigned (`t1-NNN`, passed as `--task_id`; the folder name is not the
+   task id, and without `--task_id` the checker uses a labelled local working id), the SIDERIUS checkout
    (`--siderius`: <https://github.com/yuema137/SIDERIUS> at commit
    `1ab94b5101f705f2bd90ba89a21fd10bb2ed98de` or later, or the 1.1.0 tag once
    published, with `.venv/bin/python` from `uv sync --group dev --frozen`) and where the data is: already downloaded
@@ -49,7 +51,7 @@ From the kit root, with the SIDERIUS interpreter:
 
 ```bash
 $SIDERIUS/.venv/bin/python tools/check_submission.py <task_dir-or-zip> \
-  --siderius $SIDERIUS (--data_dir DIR | --download) [--retrain] --report <path>/check-report.json
+  --task_id t1-NNN --siderius $SIDERIUS (--data_dir DIR | --download) [--retrain] --report <path>/check-report.json
 ```
 
 Read the printed lines and the report JSON (`steps[].details` holds problem

@@ -99,9 +99,9 @@ def test_cache_clutter_is_ignored_not_refused(submission: Path) -> None:
     assert not any("__pycache__" in f for f in result.files)
 
 
-def test_invalid_task_id_folder_name_is_refused(tmp_path: Path, submission: Path) -> None:
+def test_unsafe_folder_name_is_refused(tmp_path: Path, submission: Path) -> None:
     renamed = submission.rename(tmp_path / "bad name")
-    assert any("not a valid task id" in p for p in problems_of(renamed))
+    assert any("'bad name' is not a safe folder name" in p for p in problems_of(renamed))
 
 
 # -- size limits ----------------------------------------------------------------
@@ -375,7 +375,7 @@ def test_built_zip_round_trips_through_the_checker(submission: Path, tmp_path: P
     work.mkdir()
     opened = checker.open_input(path, work)
     assert opened.root is not None
-    assert (opened.task_id, opened.zip_bytes, opened.problems, opened.zip_sha256) == (
+    assert (opened.folder, opened.zip_bytes, opened.problems, opened.zip_sha256) == (
         "quickstart_classification",
         size,
         [],
@@ -622,3 +622,87 @@ def test_composition_step_cannot_import_modules_planted_in_the_work_folder(submi
     step = checker.step_composition(ctx)
     assert step.status == "FAIL", step.reason
     assert "ModuleNotFoundError" in step.details["output_tail"]
+
+
+# -- portal task ids ---------------------------------------------------------------
+
+
+@pytest.mark.parametrize("value", ["t1-007", "t1-123", "t1-0001"])
+def test_portal_task_ids_are_accepted(value: str) -> None:
+    assert checker.parse_args(["x", "--task_id", value]).task_id == value
+
+
+@pytest.mark.parametrize("value", ["t1-7", "t1-07", "T1-007", "t2-007", "quickstart", "t1-007x", "t1-"])
+def test_malformed_task_ids_are_refused(value: str, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exited:
+        checker.parse_args(["x", "--task_id", value])
+    assert exited.value.code == 2 and "is not a portal task id (t1-NNN" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("folder", "expected"),
+    [
+        ("galaxy_morphology", "galaxy_morphology"),
+        ("my task.v2", "my-task-v2"),
+        ("", "local-task"),
+        (None, "local-task"),
+    ],
+)
+def test_local_working_id_is_a_safe_console_id(folder: str | None, expected: str) -> None:
+    from submission_rules import FOLDER_NAME_PATTERN, local_task_id
+
+    assert local_task_id(folder) == expected and FOLDER_NAME_PATTERN.fullmatch(local_task_id(folder))
+
+
+def test_report_labels_the_task_id(submission: Path) -> None:
+    local = checker.check(checker.parse_args([str(submission)]), fetch=_stub(404, None)[0])
+    assert (local["task_id"], local["folder"]) == ("quickstart_classification", "quickstart_classification")
+    assert local["task_id_kind"] == "local working id (the portal assigns the real id)"
+    portal = checker.check(checker.parse_args([str(submission), "--task_id", "t1-007"]), fetch=_stub(404, None)[0])
+    assert (portal["task_id"], portal["task_id_kind"], portal["folder"]) == (
+        "t1-007",
+        "portal-assigned task id",
+        "quickstart_classification",
+    )
+
+
+def test_admission_registers_the_task_under_the_given_id(
+    submission: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Step 3a passes --task-id and uses tasks/<id>/ and data/<id>/, whatever the folder is called."""
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], *, cwd: Path, timeout: float, env: dict[str, str], tail_lines: int = 40):
+        calls.append(command)
+        if "init" in command:
+            (Path(command[command.index("--workspace") + 1]) / "siderius_workspace" / "settings").mkdir(parents=True)
+        return checker.Completed(command, 0, timeout, "")
+
+    monkeypatch.setattr(checker, "run", fake_run)
+    monkeypatch.setattr(checker, "bwrap_status", lambda: "usable")
+    work = tmp_path / "work"
+    work.mkdir()
+    ctx = checker.Context(
+        root=submission,
+        work=work,
+        args=checker.parse_args([str(submission), "--siderius", str(tmp_path), "--task_id", "t1-007"]),
+        static=check_static(submission),
+        python=Path("/usr/bin/python3"),
+        task_id="t1-007",
+    )
+    step = checker.step_admission(ctx)
+    assert step.status == "PASS" and "--task-id t1-007" in step.reason
+    add_task = next(call for call in calls if "add-task" in call)
+    assert add_task[add_task.index("--task-id") + 1] == "t1-007"
+    workspace = work / "siderius" / "project" / "siderius_workspace"
+    assert add_task[add_task.index("--manifest") + 1] == str(workspace / "tasks" / "t1-007" / "task.yaml")
+    assert (workspace / "data" / "t1-007").is_dir() and not (workspace / "tasks" / "quickstart_classification").exists()
+
+
+def test_make_submission_names_the_zip_after_the_portal_id(submission: Path, tmp_path: Path) -> None:
+    path, _, _ = make_submission.make(submission, tmp_path, "t1-007")
+    assert path.name == "t1-007.zip"
+    with zipfile.ZipFile(path) as archive:
+        assert all(name.startswith("quickstart_classification/") for name in archive.namelist())
+    with pytest.raises(ValueError, match="not a portal task id"):
+        make_submission.make(submission, tmp_path, "007")

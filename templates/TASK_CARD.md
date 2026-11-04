@@ -1,8 +1,10 @@
 # Task card: <task title>
 
 <!--
-Copy this file to <task_id>/TASK_CARD.md and replace every comment with your
-text. Keep the nine "##" headings exactly as written: the checker looks for
+Copy this file to <your package folder>/TASK_CARD.md and replace every comment
+with your text. The title heading is free text: the task's registered title and
+its id (t1-NNN) come from the submission portal, where you create the task
+before uploading. Keep the nine "##" headings exactly as written: the checker looks for
 them and refuses an empty section. Comments like this one are ignored, so a
 section that still holds only its comment counts as empty. You may add "###"
 subheadings inside a section.

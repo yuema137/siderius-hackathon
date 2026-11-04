@@ -15,12 +15,25 @@ once published. The checker records the version and git revision it used.
 A submission contains no workflow, no data and no credentials; the data lives
 on Zenodo.
 
-## 1. Layout
+## 1. Task ids and layout
 
-The upload is one zip, `<task_id>.zip`, with exactly one top folder:
+**Task ids are assigned by the submission portal**, not by the package. The
+flow is:
+
+1. sign in to the portal;
+2. create a task with a title; the portal assigns its id, `t1-NNN` (for
+   example `t1-007`; regex `^t1-[0-9]{3,}$`) and registers the title;
+3. build and check the package locally (sections 6 and 7);
+4. upload the zip to that task; each upload is a new version of it.
+
+The zip's top folder name is only the author's working name; it is not the task
+id and the portal ignores it. The `TASK_CARD.md` title heading is free text; the
+portal's title is the registered one.
+
+The upload is one zip with exactly one top folder:
 
 ```
-<task_id>/
+<folder>/                         # any safe working name
   TASK_CARD.md                    # required headings, section 5
   data_source.json                # Zenodo record and file checksums, section 2
   fetch_data.py                   # download + verify + process, section 3
@@ -38,10 +51,10 @@ The upload is one zip, `<task_id>.zip`, with exactly one top folder:
 A TensorFlow SavedModel is a folder: `baseline/final_model/` holding
 `saved_model.pb` (and `variables/`), and likewise `baseline/init_model/`.
 
-- `<task_id>` matches `[A-Za-z0-9_-]{1,80}` (the SIDERIUS console task-id
-  rule). It becomes the SIDERIUS task id: Track 2 copies `task/` to
-  `siderius_workspace/tasks/<task_id>/` and the processed data to
-  `siderius_workspace/data/<task_id>/`.
+- `<folder>` matches `[A-Za-z0-9_-]{1,80}` (safe-name rule). Track 2 registers
+  the package under the portal-assigned id: it copies `task/` to
+  `siderius_workspace/tasks/<task id>/` and the processed data to
+  `siderius_workspace/data/<task id>/` and runs `add-task --task-id <task id>`.
 - `task/` follows the SIDERIUS
   [task composition reference](https://github.com/yuema137/SIDERIUS/blob/master/docs/reference/task-composition.md).
   Required manifest sections: `task_data_path`, `dataset_profile`, `metric`
@@ -278,7 +291,7 @@ text after HTML comments are removed:
 ## 6. Checker
 
 ```
-python tools/check_submission.py <task_dir-or-zip> [--siderius CHECKOUT]
+python tools/check_submission.py <task_dir-or-zip> [--siderius CHECKOUT] [--task_id t1-NNN]
     [--data_dir DIR | --download] [--retrain] [--report out.json] [--keep_work]
     [--fetch_timeout S] [--siderius_timeout S] [--eval_timeout S] [--train_timeout S]
 ```
@@ -292,6 +305,14 @@ status:
 | `FAIL` | 1 | any step FAILs |
 | `INCOMPLETE` | 2 | no step FAILs but a required step was SKIPPED (4b may be skipped) |
 
+`--task_id` is the id the portal assigned; it must match `^t1-[0-9]{3,}$`
+(otherwise the command exits 2 with a usage error). Step 3a registers the task
+with `add-task --task-id <id>`. Without it, the checker derives a safe local id
+from the folder name (unsafe characters become `-`; empty becomes
+`local-task`) and labels it "local working id (the portal assigns the real
+id)". The report records `task_id`, `task_id_kind` (`portal-assigned task id`
+or that label) and `folder`.
+
 The report JSON holds `verdict`, `failed_steps`, `skipped_required_steps`,
 `zip_sha256` (of the uploaded zip, or of the zip `make_submission.py` would
 build from a folder; null when not measured), `zip_bytes`, the SIDERIUS
@@ -303,7 +324,7 @@ build from a folder; null when not measured), `zip_bytes`, the SIDERIUS
 | `1` package | section 1 layout and limits hold; JSON files match their schemas; card headings present and non-empty; card states the DOI | never |
 | `2a` zenodo_record | `GET https://zenodo.org/api/records/<id>` returns 200; the resolved `id` equals the declared id; DOI, access and license agree; every declared file is listed with the same size and `md5:` checksum. Restricted records whose file list is hidden pass with a note | `data_source.json` invalid |
 | `2b` data_files | `--data_dir`: every declared file is there with matching size and md5, then `fetch_data.py --source_dir <data_dir>` exits 0 and writes at least one file. `--download`: `fetch_data.py` exits 0 and writes at least one file | neither flag; or `--download` on a restricted record without `share_link` |
-| `3a` siderius_admission | in a private temporary folder: `candidate_console init --workspace ... --credential-file <mode-600 {}>`, `task/` copied to `tasks/<task_id>/`, processed data (or an empty folder) to `data/<task_id>/`, `add-task --config ... --manifest ... --no-gpu`, `check --config ...` all exit 0 | no `--siderius`; not Linux |
+| `3a` siderius_admission | in a private temporary folder: `candidate_console init --workspace ... --credential-file <mode-600 {}>`, `task/` copied to `tasks/<id>/`, processed data (or an empty folder) to `data/<id>/`, `add-task --config ... --manifest ... --task-id <id> --no-gpu`, `check --config ...` all exit 0 | no `--siderius`; not Linux |
 | `3b` siderius_composition | `workflows.task_composition.compose_run_task_bindings(task.yaml)` succeeds; reports primary/secondary metric ids and directions | no `--siderius` |
 | `4.0` baseline_model | every model artifact passes its section 4.3 format check; the final model differs from the initial model | final model or `baseline_result.json` missing/invalid; `.pt`/`.onnx` without `--siderius` |
 | `4.1` baseline_environment | no `requirements.txt` (SIDERIUS venv used), or the isolated venv of section 4.4 was built | no `--siderius`; invalid `requirements.txt` (step 1 fails); `uv` missing; network failure |
@@ -344,13 +365,14 @@ Facts the steps rely on:
 ## 7. `make_submission.py`
 
 ```
-python tools/make_submission.py <task_dir> [--output_dir DIR]
+python tools/make_submission.py <task_dir> [--output_dir DIR] [--task_id t1-NNN]
 ```
 
 Runs step 1 on the folder and refuses on any problem; leaves out the skipped
-clutter; writes `DIR/<task_id>.zip` (never replacing an existing file);
-prints the path, size and sha256. The zip is deterministic: sorted members
-under `<task_id>/`, deflate level 9, timestamp 1980-01-01, mode 0644.
+clutter; writes `DIR/<task_id>.zip` with `--task_id`, otherwise
+`DIR/<folder>.zip` (never replacing an existing file); prints the path, size,
+sha256 and the task id. A malformed `--task_id` is refused. The zip is
+deterministic: sorted members under `<folder>/`, deflate level 9, timestamp 1980-01-01, mode 0644.
 Files over 5 MB are refused by step 1 before anything is read into the zip. Exit 0 on
 success, 1 on refusal.
 

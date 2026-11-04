@@ -32,7 +32,29 @@ MAX_ZIP_MEMBERS = 10_000
 #: replaces it with the numeric Zenodo record id.
 PLACEHOLDER_RECORD_ID = "ZENODO_RECORD_ID"
 
-TASK_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,80}")
+#: The zip's single top folder: the author's working name, NOT the task id.
+FOLDER_NAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,80}")
+#: Task ids are assigned by the submission portal when the author creates a task.
+PORTAL_TASK_ID_PATTERN = re.compile(r"t1-[0-9]{3,}")
+LOCAL_ID_LABEL = "local working id (the portal assigns the real id)"
+PORTAL_ID_LABEL = "portal-assigned task id"
+
+
+def local_task_id(folder_name: str | None) -> str:
+    """A safe SIDERIUS console task id derived from the working folder name.
+
+    Used only when no portal id (``--task_id``) is given; the portal assigns
+    the real id. Unsafe characters become ``-``; at most 80 characters.
+    """
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "-", folder_name or "")[:80].strip("-")
+    return cleaned or "local-task"
+
+
+def portal_task_id_problem(value: str) -> str | None:
+    if PORTAL_TASK_ID_PATTERN.fullmatch(value):
+        return None
+    return f"--task_id {value!r} is not a portal task id (t1-NNN, for example t1-007)"
+
 
 #: Data arrays and tables belong on Zenodo; refused outside baseline/ (and inside
 #: baseline/ unless the file is the model artifact itself, e.g. final_model.pkl).
@@ -549,11 +571,11 @@ def load_json_model(path: Path, model: type[BaseModel], name: str) -> tuple[Base
 
 
 def check_static(root: Path) -> StaticResult:
-    """Checker step 1 on an unpacked submission folder named ``<task_id>``."""
+    """Checker step 1 on an unpacked submission folder (any safe working name)."""
     result = StaticResult()
-    if not TASK_ID_PATTERN.fullmatch(root.name):
+    if not FOLDER_NAME_PATTERN.fullmatch(root.name):
         result.problems.append(
-            f"folder name {root.name!r} is not a valid task id (letters, digits, '-', '_'; at most 80)"
+            f"folder name {root.name!r} is not a safe folder name (letters, digits, '-', '_'; at most 80)"
         )
     files, problems = list_package_files(root)
     result.files = files
@@ -607,7 +629,7 @@ FIXED_TIME = (1980, 1, 1, 0, 0, 0)
 
 
 def build_zip_bytes(root: Path, files: list[str]) -> bytes:
-    """Deterministic zip: one top folder ``<task_id>/``, sorted, fixed time, mode 0644."""
+    """Deterministic zip: one top folder ``<folder>/``, sorted, fixed time, mode 0644."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for relative in sorted(files):
@@ -620,7 +642,7 @@ def build_zip_bytes(root: Path, files: list[str]) -> bytes:
 
 
 def zip_member_problems(archive: zipfile.ZipFile) -> tuple[str | None, list[str]]:
-    """``(task_id, problems)`` for the members of an uploaded zip, before extraction."""
+    """``(top folder name, problems)`` for the members of an uploaded zip, before extraction."""
     problems = []
     tops = set()
     total = 0
@@ -646,7 +668,7 @@ def zip_member_problems(archive: zipfile.ZipFile) -> tuple[str | None, list[str]
         if info.is_dir():
             continue
         if len(path.parts) < 2:
-            problems.append(f"zip member {name!r} is outside the <task_id>/ folder")
+            problems.append(f"zip member {name!r} is outside the top folder")
             continue
         relative = PurePosixPath(*path.parts[1:]).as_posix()
         if is_ignored(relative):
@@ -655,7 +677,7 @@ def zip_member_problems(archive: zipfile.ZipFile) -> tuple[str | None, list[str]
         total += info.file_size
         problems.extend(file_rule_problems(relative, info.file_size))
     if len(tops) != 1:
-        problems.append(f"the zip must contain exactly one top folder <task_id>/; found {sorted(tops)}")
+        problems.append(f"the zip must contain exactly one top folder; found {sorted(tops)}")
         return None, problems
     if total > MAX_EXPANDED_BYTES:
         problems.append(f"the zip declares {total} bytes when unpacked; the limit is {MAX_EXPANDED_BYTES} (200 MB)")

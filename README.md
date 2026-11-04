@@ -76,9 +76,14 @@ you go. The card's sections are listed in [SPEC.md section 5](SPEC.md#5-task_car
 
 ### 2. Build the package
 
-Create a folder named after your task id (letters, digits, `-`, `_`), for
-example `galaxy_morphology/`, with this content. The fastest start is to copy
-the worked example closest to your model and change it.
+First, sign in to the portal at `PORTAL_URL` and create your task with a
+title. The portal registers the title and assigns the task's id, for example
+`t1-007`; you upload every version of the package to that task.
+
+Then create a folder for the package with any working name (letters, digits,
+`-`, `_`), for example `galaxy_morphology/`. The folder name is only for you;
+the task id is the one the portal assigned. The fastest start is to copy the
+worked example closest to your model and change it. The folder holds:
 
 ```
 galaxy_morphology/
@@ -160,10 +165,12 @@ From the kit folder:
 
 ```bash
 $SIDERIUS/.venv/bin/python tools/check_submission.py /absolute/path/galaxy_morphology \
-  --siderius $SIDERIUS --download --retrain --report check-report.json
+  --task_id t1-007 --siderius $SIDERIUS --download --retrain --report check-report.json
 ```
 
-Use `--data_dir DIR` instead of `--download` if the Zenodo files are already
+Replace `t1-007` with your task's id from the portal; the checker registers
+the task in SIDERIUS under that id. Without `--task_id` it uses a local working
+id made from the folder name and says so. Use `--data_dir DIR` instead of `--download` if the Zenodo files are already
 on disk in `DIR`. `--retrain` retrains your baseline, so it takes as long as
 your training; leave it out for a quick check.
 
@@ -178,10 +185,11 @@ environment directly.
 The checker prints one line per step and a verdict, for example:
 
 ```text
+task id: t1-007 (portal-assigned task id); folder: galaxy_morphology
 [PASS]   1 package: layout, sizes, file types, card and JSON schemas are valid
 [PASS]  2a zenodo_record: record 1234567 found; declared files match Zenodo's names, sizes and md5
 [PASS]  2b data_files: fetch_data.py downloaded and processed the Zenodo files: 2 file(s) in the data folder
-[PASS]  3a siderius_admission: init, add-task --manifest --no-gpu and check accepted task galaxy_morphology
+[PASS]  3a siderius_admission: init, add-task --manifest --task-id t1-007 --no-gpu and check accepted the task
 [PASS]  3b siderius_composition: composed: primary metric accuracy (higher), 1 secondary, Health declared
 [PASS] 4.0 baseline_model: pytorch/pt: initial and final model pass the format checks
 [PASS] 4.1 baseline_environment: no baseline/requirements.txt: the baseline runs in the SIDERIUS venv
@@ -207,14 +215,15 @@ design, point it at [skills/track1-task-check/SKILL.md](skills/track1-task-check
 
 ```bash
 $SIDERIUS/.venv/bin/python tools/make_submission.py /absolute/path/galaxy_morphology \
-  --output_dir /absolute/path/uploads
+  --task_id t1-007 --output_dir /absolute/path/uploads
 ```
 
 It refuses a folder that fails step 1, leaves out caches such as
 `__pycache__`, and prints:
 
 ```text
-wrote /absolute/path/uploads/galaxy_morphology.zip
+wrote /absolute/path/uploads/t1-007.zip
+task id: t1-007
 size <bytes> bytes
 sha256 <64 hex characters>
 ```
@@ -224,9 +233,11 @@ old zip away first; it is never overwritten.
 
 ### 5. Upload
 
-Upload the zip at `PORTAL_URL`. Keep the sha256 the tool printed; the portal's
-receipt shows the sha256 it received, and the two should match. You can upload
-new versions until the deadline; the latest counts.
+On the portal at `PORTAL_URL`, open the task you created in step 2 and upload
+the zip to it. Each upload is a new version of that task. Keep the sha256 the
+tool printed; the portal's receipt shows the sha256 it received, and the two
+should match. You can upload new versions until the deadline; the latest
+counts.
 
 ## The worked examples
 
