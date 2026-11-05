@@ -107,7 +107,7 @@ Pydantic model `DataSource` (`extra="forbid"`):
 | Field | Type | Rule |
 | --- | --- | --- |
 | `schema_version` | `1` | literal |
-| `zenodo_record_id` | string | numeric id of the **published version record** (not the concept id); the worked example uses the placeholder `ZENODO_RECORD_ID` |
+| `zenodo_record_id` | string | numeric id of the **published version record** (not the concept id); the kit examples use `23988652`; the placeholder `ZENODO_RECORD_ID` always fails step 2a |
 | `doi` | string | exactly `10.5281/zenodo.<zenodo_record_id>` |
 | `access` | `"public"` or `"restricted"` | must match Zenodo's `metadata.access_right` (`open` / `restricted`) |
 | `share_link` | string or null | restricted only; starts with `https://zenodo.org/`; a Zenodo secret link with *Can view* permission, expiring no earlier than 2026-12-31 |
@@ -426,9 +426,9 @@ One local walkthrough and two advanced framework variants share one task package
 (synthetic two-class tabular data). Their data files are the four quickstart
 shards generated with seed 20260824 (SHA-256 equal to the pins in SIDERIUS
 `examples/quickstart/declared/data_manifest.json`); `data_source.json` holds
-their real sizes and md5 with an intentional placeholder record id. Step 2a
-therefore fails: these examples are not submission-ready and no Zenodo publication
-is planned for them. Real submissions must pass that check with a published record. The task package is the SIDERIUS CSV
+their sizes and md5 and the published record `23988652` (DOI `10.5281/zenodo.23988652`),
+so the complete checker passes on them, including steps 2a and 2b. They are
+packaging examples, not submissions. The task package is the SIDERIUS CSV
 classification template adapted to that data (file-backed labels), with primary
 `accuracy`, secondary `balanced_accuracy`, two Health checks and the PyTorch
 model plugin bonus.

@@ -26,11 +26,11 @@ where the rule mixes products and periodic terms.
 
 ## Data
 
-- DOI: 10.5281/zenodo.ZENODO_RECORD_ID (intentional placeholder;
-  data is generated locally, with no planned Zenodo publication)
+- DOI: 10.5281/zenodo.23988652 (https://zenodo.org/records/23988652; the same record serves
+  all three kit examples)
 - Size: 4 CSV files, 14,192 bytes in total; 64 rows per file
 - License: cc-by-4.0
-- Access: local walkthrough; the public-access declaration is illustrative
+- Access: public
 - Processing: `fetch_data.py` downloads the four shards (or reads them from
   `--source_dir`), checks each size and md5 against `data_source.json`, then
   writes `train.csv` (shards 0 and 1 concatenated) and `validation.csv`
