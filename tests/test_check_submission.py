@@ -145,7 +145,8 @@ def test_card_missing_heading_and_comment_only_section(submission: Path) -> None
 
 def test_card_must_state_the_declared_doi(submission: Path) -> None:
     card = submission / "TASK_CARD.md"
-    card.write_text(card.read_text().replace("10.5281/zenodo.ZENODO_RECORD_ID", "see Zenodo"))
+    doi = json.loads((submission / "data_source.json").read_text())["doi"]
+    card.write_text(card.read_text().replace(doi, "see Zenodo"))
     assert any("must state the DOI" in p for p in problems_of(submission))
 
 
@@ -304,7 +305,9 @@ def test_concept_id_resolving_to_another_version_fails(submission: Path) -> None
 def test_missing_record_and_placeholder_fail(submission: Path) -> None:
     source = _source(submission)
     assert checker.step_zenodo_record(source, _stub(404, None)[0]).status == "FAIL"
-    placeholder = DataSource.model_validate_json((submission / "data_source.json").read_bytes())
+    document = json.loads((submission / "data_source.json").read_text())
+    document.update(zenodo_record_id="ZENODO_RECORD_ID", doi="10.5281/zenodo.ZENODO_RECORD_ID")
+    placeholder = DataSource.model_validate(document)
     fetch, calls = _stub(200, {})
     step = checker.step_zenodo_record(placeholder, fetch)
     assert step.status == "FAIL" and "placeholder" in step.reason and calls == []
@@ -568,9 +571,6 @@ def test_verdict_distinguishes_incomplete_from_pass_and_fail() -> None:
 def test_all_static_steps_passing_without_siderius_is_incomplete_exit_2(
     submission: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    for name in ("data_source.json", "TASK_CARD.md"):
-        path = submission / name
-        path.write_text(path.read_text().replace("ZENODO_RECORD_ID", "4242"))
     source = DataSource.model_validate_json((submission / "data_source.json").read_bytes())
     monkeypatch.setattr(checker, "fetch_json", _stub(200, _record(source))[0])
     assert checker.main([str(submission)]) == 2

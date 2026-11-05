@@ -294,21 +294,13 @@ differ only in `baseline/`:
 
 Read [the PyTorch example's TASK_CARD.md](examples/quickstart_classification/TASK_CARD.md) first.
 
-Its four data files are generated, not downloaded. This is intentionally a local-only walkthrough. Its `data_source.json` holds the placeholder record id
-`ZENODO_RECORD_ID`, so step 2a fails with "placeholder". This expected failure does not count as a full checker PASS; inspect the other steps separately. To check it yourself, generate the files from your SIDERIUS checkout:
+Its four data files are published on Zenodo as record `23988652` (DOI
+`10.5281/zenodo.23988652`, CC-BY-4.0), the same record for all three examples, so
+the complete checker runs on it, including the download in steps 2a and 2b:
 
 ```bash
-mkdir -p /absolute/path/example-data
-cd $SIDERIUS/examples/quickstart
-../../.venv/bin/python -c "
-import importlib.util, sys
-spec = importlib.util.spec_from_file_location('qs', 'plugins/_quickstart_task.py')
-qs = importlib.util.module_from_spec(spec); sys.modules['qs'] = qs; spec.loader.exec_module(qs)
-print(qs.write_data_dir(sys.argv[1]))
-" /absolute/path/example-data
-cd -
 $SIDERIUS/.venv/bin/python tools/check_submission.py examples/quickstart_classification \
-  --siderius $SIDERIUS --data_dir /absolute/path/example-data --retrain
+  --siderius $SIDERIUS --download --retrain
 ```
 
 Replace `examples/quickstart_classification` with
@@ -316,11 +308,10 @@ Replace `examples/quickstart_classification` with
 `examples/advanced/quickstart_classification_keras` to check the others; those two build the
 separate baseline environment described in step 3.
 
-The generator prints the SHA-256 of `shard_0000.csv` to `shard_0003.csv`.
-There is no planned Zenodo publication for these walkthrough files. For a real
-challenge, replace the placeholder in `data_source.json` and `TASK_CARD.md`
-with your own published version record, then run the complete checker.
-Never bypass step 2a or report the walkthrough as submission-ready.
+For your own challenge, publish your data as your own Zenodo record and put its
+version record id and DOI in `data_source.json` and `TASK_CARD.md`, then run
+the complete checker. Never bypass step 2a. The example itself is a packaging
+walkthrough, not a submission.
 
 ## Where each choice lives
 
