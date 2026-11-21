@@ -101,7 +101,8 @@ Stage only the files needed to reproduce and score your solution:
 ```text
 submission.json     at ZIP root
 model.py            self-contained inference plugin
-weights.pt          PyTorch state_dict, where applicable
+initial.pt          model state immediately after initialization, before training
+weights.pt          final trained state_dict
 cfg.json            optional constructor arguments
 train/              complete original training source, nonempty
   train.py
@@ -111,27 +112,55 @@ Illustrative manifest, for a task that accepts a named class and configuration:
 
 ```json
 {
+  "kind": "model",
+  "seed": 0,
+  "initial_weights": "initial.pt",
   "plugin": "model.py",
   "symbol": "MyNet",
   "weights": "weights.pt",
   "plugin_config": "cfg.json",
-  "train_command": "python train/train.py --data_dir $DATA_DIR --out weights.pt",
+  "train_command": "python train/train.py --data_dir $DATA_DIR --seed $SEED --initial-out initial.pt --out weights.pt",
   "train_dir": "train/"
 }
 ```
 
-This is not universal: remove or adapt `symbol`, `weights` and `plugin_config`
-as required by the task table below. Paths are relative to the ZIP root.
+Adapt `symbol` and `plugin_config` as required by the task table below. The
+training flags shown are examples: implement the same behavior in your script. Paths are relative to the ZIP root.
 PyTorch weights are loaded as a state dict with `weights_only=True`, not a
-pickled model object. Algorithm submissions omit weights. The inference plugin
+pickled model object. For algorithms without learned parameters, use
+`"kind": "algorithm"`, `"seed": 0`, and `"initial_artifact": "initial_model.py"`;
+include the initial implementation/configuration and the final `plugin`, and
+omit `weights` and `initial_weights`. Do not create fake weight files. This
+algorithm option applies only where the task contract supports it. The inference plugin
 must contain its helpers: arbitrary training files are not available to it.
 
 `train_command` runs with bash in writable `/work`. Read training data through
 `$DATA_DIR` (read-only train files); `$PACKAGE_DIR` is the read-only task package,
-`$OUTPUT_DIR` is `/work`, and `$SEED` is `0`. Do not rely on absolute paths from
+`$OUTPUT_DIR` is `/work`, and `$SEED` is your recorded manifest seed. Do not rely on absolute paths from
 your machine, network access, validation files, or a pre-trained final artifact
 being present during reproduction. Include your complete training code and
 state legitimate initialization requirements explicitly.
+
+### Capture the initial model before training
+
+All five items are required: full training code, full inference code, recorded
+random seed, initial model and final trained model. Record the seed you actually used in the manifest (`0` in the example above),
+an integer from 0 to 4,294,967,295. The reproduction command receives it as `$SEED`. Your training code must
+apply it to Python, NumPy, PyTorch, data shuffling and any other random generator
+it uses. Record deterministic settings and remaining nondeterminism.
+
+Save `initial.pt` **immediately after constructing the model and before any
+optimizer step or fitting**. Save `weights.pt` after training. Both must be in
+the submitted ZIP, including for geoneutrinos (whose score still uses fresh
+retraining). The model architecture and configuration must load both states.
+
+The uploaded initial checkpoint is audit evidence, **not a trusted starting
+point for retraining**. Reproduction initializes the model again from the
+recorded seed; do not depend on loading your uploaded initial or final weights
+inside `train_command`. Include initialization code and document any requested
+pretraining separately; an uploaded checkpoint does not authorize pretraining.
+File-presence checks cannot prove that a checkpoint is untrained or that source
+is complete: reproducibility and scientific review remain necessary.
 
 The scoring/retraining environment is SIDERIUS v1.1.0 with Python 3.12,
 PyTorch 2.10, NumPy, SciPy, pandas, h5py, scikit-learn 1.9.1 and skops 0.13.0,
@@ -145,7 +174,7 @@ Before using an upload attempt:
    contract. Test inference and the applicable validity checks locally.
 3. Execute the exact `train_command` in a fresh work directory using only the
    train split, with the environment variables above set to local equivalents.
-   Confirm it writes the promised output. A partial run checks startup only;
+   Confirm it writes the declared initial and final states, or the final plugin for an algorithm. Test inference separately. A partial run checks startup only;
    it does not prove reproduction. Do not point this check at a directory that
    exposes validation labels to training.
 4. Inspect the staged files for secrets, private data, logs containing keys,
@@ -168,7 +197,7 @@ scp team@<IP>:~/work/<slug>/submission.zip ./<slug>-submission.zip
 ```
 
 Upload through the [portal](https://submit.siderius.scitra.org/track2). Save the
-submission ID, exact ZIP and checksum. Five accepted uploads are shared across
+submission ID, exact ZIP and checksum. Ten accepted uploads are shared across
 all tasks; later evaluation failure does not refund an accepted attempt.
 
 ## Task contracts
@@ -230,7 +259,7 @@ the submission passes the applicable validity checks and review.
 
 - **Metric:** `obd_combined`; higher is better.
 - **Interface:** predict(waveform_files, geometry_file, model_path, procs) → {event id: [score, px, py, pz, cx, cy, cz]}.
-- **Manifest:** Always retrained: weights names the file your train_command writes (an uploaded copy is ignored). A PyTorch network inside predict is fine.
+- **Manifest:** Always retrained: weights names the file your train_command writes. Include the initial and final uploaded states for audit; scoring uses the freshly retrained output. A PyTorch network inside predict is fine.
 - **Limits:** scoring 1,800 s; retraining 2,400 s.
 - **Download:** approximately 20.5 GB.
 

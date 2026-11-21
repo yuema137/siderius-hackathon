@@ -23,6 +23,17 @@ You make the scientific decisions; an agent can help with the implementation.
 [Live leaderboard](https://siderius.scitra.org/hackathon/leaderboard) ·
 [Discord help](https://discord.gg/FXfcGTUb)
 
+## Challenge day in six steps
+
+| Step | Do this | You are ready when… |
+| --- | --- | --- |
+| 1 | [SSH into your assigned GPU](#2-prepare-your-team-and-computer) | H100 is visible and PyTorch can use CUDA. |
+| 2 | [Set your OpenAI key](#set-your-openai-api-key) | The presence check succeeds without displaying the key. |
+| 3 | [Run the CPU TESS + Luna warm-up](#3-cpu-warm-up-with-tess-and-luna) | You have a baseline result, live analysis and a next experiment. |
+| 4 | [Prepare the complete model package](#6-package-and-submit-a-working-model) | Code, seed, initial model and trained model are all present and reproducible. |
+| 5 | [Upload the ZIP](https://submit.siderius.scitra.org/track2) by **4:00 pm** | You receive a model submission ID. |
+| 6 | [Upload the report PDF](https://submit.siderius.scitra.org/track2/reports) by **4:30 pm** | The current report is linked to your own task/model submission. |
+
 ## 1. Know your track and the schedule
 
 | Track | What you do | Status |
@@ -67,8 +78,20 @@ If you do not already have a key, run this in Terminal or Windows PowerShell
 ssh-keygen -t ed25519 -C "your-email@university.edu"
 ```
 
-Use the SSH command in your access message. Once connected, check the GPU and
-activate the prepared environment:
+Run the SSH command in your access message **on your laptop**. Replace the IP
+and key path below with your assigned values; do not type the angle brackets:
+
+```sh
+ssh -i ~/.ssh/id_ed25519 team@<assigned-IP>
+```
+
+Windows PowerShell also supports `ssh`; use your key's Windows path if needed.
+Check the first-connection fingerprint against the access message or with an
+organizer before accepting it. `Permission denied (publickey)` usually means
+you selected a different private key from the public key on your team form.
+Ask an organizer to add the correct **public** key; never send your private key.
+
+Once the prompt is `team@…`, the following commands run **on the GPU machine**:
 
 ```sh
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
@@ -84,7 +107,63 @@ data preparation, submission files and task interfaces. For SIDERIUS itself,
 start with [Get started](https://siderius.scitra.org/getting-started) and
 [tutorials](https://siderius.scitra.org/tutorials).
 
-## 3. Get a task and run its baseline first
+### Set your OpenAI API key
+
+Do this in the terminal where you will run SIDERIUS, **after SSH** if using the
+team machine. Start a Bash shell first (also works from macOS Terminal):
+
+```sh
+bash
+read -r -s -p "OpenAI API key: " OPENAI_API_KEY
+printf '\n'
+export OPENAI_API_KEY
+python -c 'import os; print("OPENAI_API_KEY is set" if os.environ.get("OPENAI_API_KEY") else "Key missing")'
+```
+
+Paste the separately supplied team key at the hidden prompt. The check prints
+only whether a key is present; it does **not** prove the key works. The Luna
+warm-up below makes the actual API calls. Repeat this in a new terminal or
+tmux session; do not put the literal key in a command, notebook, submission or
+Git repository. A key set on your laptop is not automatically forwarded by SSH.
+The variable name follows the [official OpenAI SDK documentation](https://developers.openai.com/api/docs/libraries).
+
+## 3. CPU warm-up with TESS and Luna
+
+During warm-up, follow [the TESS exercise](examples/warmup-tess/README.md).
+You do not need a GPU for this exercise: inspect a small set of TESS light
+curves, run a deterministic CPU baseline, and use Luna to interpret its result
+and propose a next experiment. This is practice, not one of the eight scored
+tasks, and it does not use a model-submission attempt.
+
+On the prepared team machine, with the environment and key from step 2 set:
+
+```sh
+git clone https://github.com/yuema137/siderius-hackathon.git ~/siderius-hackathon
+cd ~/siderius-hackathon
+uv run --no-project --with numpy --with pyarrow python examples/warmup-tess/preview.py --output-dir /tmp/tess-warmup
+/opt/siderius/.venv/bin/python examples/warmup-tess/orchestrate.py --preview-dir /tmp/tess-warmup --output-dir /tmp/tess-warmup-luna --live
+```
+
+If you already cloned the repository, enter that checkout instead of cloning
+again. Use a new output directory for another live attempt. The preview downloads
+about 5 MB of data; dependency installation may take longer on a new laptop.
+For your own computer, the exercise README includes the framework installation
+and corresponding Python path. While GPU access is not yet released, the CPU
+preview can run independently on your laptop.
+
+The exercise separates the **offline CPU preview** from the **live Luna
+capability calls**. A preview proves your data and baseline work; only a
+successful live run proves your API key and Luna access work. The expected
+outputs and exact commands are in the exercise README. Keep the plots, baseline
+result and proposed next experiment, and explain the result to your teammate.
+
+This is a deliberately small orchestration exercise using CPU-side reasoning
+capabilities. SIDERIUS v1.1.0's full training loop requires CUDA; you will use
+the H100 for that during the competition. For the warm-up, follow the bounded
+Luna recipe instead of launching a full research run. For substantive
+competition experiments, switch to the Moderate profile described below.
+
+## 4. Get a task and run its baseline first
 
 After the noon release, get packages from the
 [Releases page](https://github.com/yuema137/siderius-hackathon/releases).
@@ -117,7 +196,7 @@ Data downloads range from roughly 0.2 MB to 20.5 GB. Geoneutrinos is about
 20.5 GB and pitching-wing-wake about 3.4 GB; allow time and disk space. Shared
 organizer data avoids downloading it again. See the technical guide for commands.
 
-## 4. Experiment and keep evidence as you go
+## 5. Experiment and keep evidence as you go
 
 **We recommend orchestration mode for the competition.** A coding agent can
 choose and revise the sequence of SIDERIUS capability calls as evidence arrives,
@@ -153,11 +232,25 @@ Include complete original training source. Organizers can retrain it and review
 whether the submitted artifact is reproducible. A high metric alone is not proof
 of scientific validity: inspect outputs and the task's checks, and record limitations.
 
-## 5. Package and submit a working model
+## 6. Package and submit a working model
 
-One ZIP represents one task. Put `submission.json` at its root, with the plugin,
-weights where applicable, and a nonempty `train/` containing complete training
-source. Your `train_command` must reproduce the output from the train split.
+One ZIP represents one task. **All five items are required:**
+
+| Include | What judges need |
+| --- | --- |
+| Complete training code | Data preparation, model construction, training loop, configuration and exact command. |
+| Complete inference code | A self-contained plugin implementing the task's interface. |
+| Random seed | The actual `seed` (integer 0–4,294,967,295) in `submission.json`, applied by your code to every random generator it uses; record other deterministic settings. |
+| Initial model | Save the state immediately after initialization, before training: `initial_weights: "initial.pt"`. |
+| Final trained model | Save the final state: `weights: "weights.pt"`. Include it even for tasks whose score uses fresh retraining. |
+
+Put `submission.json` at the ZIP root and complete training source in `train/`.
+Your `train_command` must reproduce the model using only the train split.
+Initial weights are audit evidence; reproduction initializes afresh from the
+seed, rather than trusting an uploaded checkpoint. For an algorithm with no
+learned weights, include its initial and final implementation/configuration
+using `kind: "algorithm"` and `initial_artifact`, as explained in the guide;
+do not create dummy weight files.
 Use the [packaging example and task contracts](docs/track2-guide.md#package-and-check)
 to avoid spending an attempt on a broken path or wrong output shape.
 
@@ -165,7 +258,7 @@ Sign in to the [Track 2 portal](https://submit.siderius.scitra.org/track2) with
 your team ID and access code, choose the matching task, and upload. Save the
 submission ID and artifact checksum with your experiment records.
 
-- **Five accepted uploads TOTAL per team across all tasks**, not five per task.
+- **Ten accepted uploads TOTAL per team across all tasks**, shared across whichever tasks you choose.
   Accepted uploads count even if evaluation later fails. Uploads refused by the
   portal's initial format check do not count.
 - Leave **at least three minutes** between uploads to the same task.
@@ -177,7 +270,7 @@ submission ID and artifact checksum with your experiment records.
 - Upload early and confirm the portal accepts your ZIP before 4:00 pm.
   A timely accepted submission can remain queued and be evaluated after the deadline.
 
-## 6. Explain what you learned in a report
+## 7. Explain what you learned in a report
 
 Prepare **one report per task**, identifying your team, task slug and the exact
 final model submission ID. Use the standard LaTeX source in
@@ -205,13 +298,14 @@ and explain verification. We do not use AI detectors to judge authorship.
 **Reports are due November 21, 2026, at 4:30 pm PST (UTC−8).** Use the final
 30 minutes to organize evidence and finish the report for the model submitted
 by 4:00 pm; this does not extend model uploads or permit new competition scores.
-Use the **separate report PDF upload** in the same Track 2 portal: select the
+Use the [**separate report PDF upload**](https://submit.siderius.scitra.org/track2/reports)
+in the same Track 2 portal (PDF up to **10 MiB**): select the
 task and link the report to your own submission ID for that task. Updating a
-report does not consume any of your five model uploads. Only the current report
+report does not consume any of your ten model uploads. Only the current report
 version is used; replacements close at 4:30 pm. Linking a failed submission to discuss a negative result does
 not make it a valid scored model.
 
-## 7. Awards and help
+## 8. Awards and help
 
 Models and reports are considered together. Track 2 awards are **Outstanding
 Scientific Solution ×2**, **Outstanding Research & Insight ×1**, and **Reward
@@ -239,7 +333,8 @@ for a local packaging check.
 | [docs/track2-guide.md](docs/track2-guide.md) | Track 2 setup, data and submission reference. |
 | [templates/track2-report/](templates/track2-report/) | Standard LaTeX report source and PDF preview. |
 | [AGENTS.md](AGENTS.md), [SPEC.md](SPEC.md) | Existing Track 1 agent workflow and exact package rules. |
-| [examples/](examples/), [tools/](tools/), [skills/](skills/) | Existing Track 1 walkthroughs and checking tools; not Track 2 packages. |
+| [examples/warmup-tess/](examples/warmup-tess/) | Track 2 CPU + Luna practice exercise; not a scored task. |
+| Other [examples/](examples/), [tools/](tools/), [skills/](skills/) | Existing Track 1 walkthroughs and checking tools; not Track 2 packages. |
 
 The kit is [MIT licensed](LICENSE). The report template preserves the official
 NeurIPS 2026 formatting and its [CC BY 4.0 attribution](templates/track2-report/LICENSE-ATTRIBUTION.txt).
