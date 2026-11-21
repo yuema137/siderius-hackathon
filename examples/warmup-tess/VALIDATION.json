@@ -1,0 +1,92 @@
+{
+  "cpu_preview": "passed_real_data",
+  "offline_repeat": "passed",
+  "guard_tests": 9,
+  "baseline": {
+    "task": "TESS near-core rotation frequency, cycles/day",
+    "model": "training_mean",
+    "prediction": 1.0896777468882328,
+    "train_count": 3338,
+    "validation_count": 442,
+    "r2": -0.009278293953142613,
+    "rmse": 0.5644400191591135,
+    "mae": 0.4464681405181428,
+    "training": "Mean fitted from training targets only; no neural-network training.",
+    "scope": "All 442 released validation curves; stars disjoint from training. Not held-out test or competition score.",
+    "native_siderius_training": false,
+    "api_calls": 0,
+    "exp_revision": "c30ebb8a9f54dca8de89d016f9ebf313aa489daf",
+    "data_revision": "9f203f4c338645a1e4b2c9dc7d6f820269ca5114"
+  },
+  "native_schema_runtime": "passed_real_TESS_composition_and_InterpretationInput",
+  "live_luna": "passed_bounded_native_interpretation_and_proposal_with_reviewed_teaching_scope",
+  "api_key_present": true,
+  "limitations": [
+    "No proposed model implemented or trained; no formal Health-check pass or measured improvement.",
+    "Generated screening schedules and parameter estimates are suggestions, not validated settings.",
+    "Structured falsifiable_prediction remains null in legacy mode; a qualitative comparison appears in expert_advice.",
+    "Proposal refers to task-background S4D evidence as interpretation evidence; this attribution should be checked, not accepted as a result of the CPU preview.",
+    "Future stochastic provider responses still require content review."
+  ],
+  "native_handoff": "passed_real_protocol_and_ProposalInput_with_explicit_mock_interpretation",
+  "bridge_budget": "passed_mock_transport_shared_4_requests_240_seconds_100000_characters",
+  "framework_revision": "5ccb436f88e64d49ed169e25ea769f65b5230dc6",
+  "automatic_task_checkout": "passed_pinned_fetch_and_native_input_validation",
+  "repair": {
+    "change": "Carry original measured preview and labeled LLM interpretation directly into native legacy commit; reject empty reasoning.",
+    "offline_validation": "9 tests passed, including real native commit prompt plus captured mock transport preserving measured evidence.",
+    "live_retest": "passed_final_third_run_after_two_bounded_followup_runs",
+    "runtime_configuration": {
+      "model": "gpt-6-luna",
+      "reasoning_effort": "low",
+      "max_output_tokens": 8192,
+      "max_bridge_requests": 4,
+      "wall_seconds": 240
+    },
+    "task_prompt_fix": "Correct v1.1.0 legacy commit per-timestep literal to TESS scalar-per-light-curve contract."
+  },
+  "historical_first_run": {
+    "bridge_calls": 3,
+    "within_240_second_limit": true,
+    "usage_receipt_statuses": [
+      "ok",
+      "ok",
+      "ok"
+    ],
+    "prompt_tokens": 7140,
+    "completion_tokens": 7669,
+    "total_tokens": 14809,
+    "interpretation_findings": 3,
+    "interpretation_bottlenecks": 3,
+    "proposal_issue": "Motivation incorrectly claimed no interpretation or measured bottleneck was supplied. Original typed input contained both.",
+    "reasoning_completion_tokens": 4096,
+    "finish_reason": "not recorded in available receipts; truncation is suspected, not established"
+  },
+  "live_run": {
+    "model": "gpt-6-luna",
+    "reasoning_effort": "low",
+    "bridge_calls": 3,
+    "elapsed_seconds_approx": 37.3,
+    "elapsed_method": "Final status mtime minus native interpretation-input mtime",
+    "request_limit": 4,
+    "wall_limit_seconds": 240,
+    "output_token_limit_per_request": 8192,
+    "usage_receipt_statuses": [
+      "ok",
+      "ok",
+      "ok"
+    ],
+    "prompt_tokens": 9109,
+    "completion_tokens": 3625,
+    "total_tokens": 12734,
+    "visible_reasoning_characters": 8028,
+    "proposal_model": "multiscale_residual_curve_regressor",
+    "scientific_content_review": {
+      "baseline_evidence_preserved": true,
+      "correct_scalar_per_curve_contract": true,
+      "no_measured_improvement_claim": true,
+      "comparison_suggested": true,
+      "scope": "Reasoning/proposal teaching exercise only, not validated scientific performance."
+    }
+  }
+}
