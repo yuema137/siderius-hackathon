@@ -32,6 +32,31 @@ class BudgetTests(unittest.TestCase):
   with self.assertRaises(RuntimeError):a.generate('x'*100001)
   self.assertEqual(self.status['bridge_calls_started'],0)
 
+class ProviderTests(unittest.TestCase):
+ def test_claude_explicit_route_reaches_bridge_without_openai_reasoning(self):
+  from orchestrate import model_route
+  state={'bridge_calls_started':0}
+  route=model_route('anthropic','claude-sonnet-5-5')
+  factory=bounded_bridge_factory(FakeTransport,state,lambda:None,Path('/tmp/test-only'),route=route)
+  bridge=factory(reasoning_effort='medium',provider='openai')
+  self.assertEqual(bridge.inner.options['provider'],'anthropic')
+  self.assertEqual(bridge.inner.options['model_id'],'claude-sonnet-5-5')
+  self.assertNotIn('reasoning_effort',bridge.inner.options)
+  self.assertEqual(bridge.inner.options['max_retries'],0)
+  for i in range(4):bridge.generate('fixture')
+  with self.assertRaises(RuntimeError):bridge.generate('fifth')
+ def test_claude_requires_model_and_own_key(self):
+  from orchestrate import model_route,check_live_setup,SetupError
+  with self.assertRaisesRegex(SetupError,'requires --model'):model_route('anthropic',None)
+  with self.assertRaisesRegex(SetupError,'ANTHROPIC_API_KEY is absent'):
+   check_live_setup('anthropic',{'OPENAI_API_KEY':'synthetic'},lambda n:object())
+ def test_claude_dependency_error_and_valid_setup(self):
+  from orchestrate import check_live_setup,SetupError
+  with self.assertRaisesRegex(SetupError,'extra pydantic-ai'):
+   check_live_setup('anthropic',{'ANTHROPIC_API_KEY':'synthetic'},lambda n:None)
+  check_live_setup('anthropic',{'ANTHROPIC_API_KEY':'synthetic'},lambda n:object())
+
+
 class EvidenceContinuityTests(unittest.TestCase):
  def test_original_evidence_reaches_native_commit_even_if_reasoning_loses_it(self):
   from orchestrate import preview_evidence_context
