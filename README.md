@@ -259,7 +259,7 @@ Sign in to the [Track 2 portal](https://submit.siderius.scitra.org/track2) with
 your team ID and access code, choose the matching task, and upload. Save the
 submission ID and artifact checksum with your experiment records.
 
-- **Ten accepted uploads TOTAL per team across all tasks**, shared across whichever tasks you choose.
+- **Five accepted uploads per team per task**. Each task has a separate allowance.
   Accepted uploads count even if evaluation later fails. Uploads refused by the
   portal's initial format check do not count.
 - Leave **at least three minutes** between uploads to the same task.
@@ -302,7 +302,7 @@ by 4:00 pm; this does not extend model uploads or permit new competition scores.
 Use the [**separate report PDF upload**](https://submit.siderius.scitra.org/track2/reports)
 in the same Track 2 portal (PDF up to **10 MiB**): select the
 task and link the report to your own submission ID for that task. Updating a
-report does not consume any of your ten model uploads. Only the current report
+report does not consume any model submission attempts. Only the current report
 version is used; replacements close at 4:30 pm. Linking a failed submission to discuss a negative result does
 not make it a valid scored model.
 
