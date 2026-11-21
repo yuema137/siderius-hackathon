@@ -130,6 +130,8 @@ The variable name follows the [official OpenAI SDK documentation](https://develo
 ## 3. CPU warm-up with TESS and Luna
 
 During warm-up, follow [the TESS exercise](examples/warmup-tess/README.md).
+Luna is the default. To use your own Claude API key, follow the
+[explicit Anthropic provider setup](examples/warmup-tess/README.md#use-your-own-claude-api-key-instead); changing only the key does not select a model.
 You do not need a GPU for this exercise: inspect a small set of TESS light
 curves, run a deterministic CPU baseline, and use Luna to interpret its result
 and propose a next experiment. This is practice, not one of the eight scored
