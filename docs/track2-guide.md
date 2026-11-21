@@ -53,6 +53,47 @@ Keep enough free disk space (roughly twice the download size). Run the baseline
 using this release's documented commands and keep the logs before editing it.
 There is no single training command that works for all eight tasks.
 
+## Choose a mode and model profile
+
+Use **orchestration mode** for the competition: your coding agent selects the
+next capability calls at runtime. **Workflow mode** runs a predefined sequence
+and is the economical option when that sequence is sufficient. Keep the same
+scientific checks in either mode; flexibility does not establish validity.
+
+The organizer installation is `/opt/siderius`. In your own installation, use
+your SIDERIUS checkout path instead. Copy a profile to your writable project
+and point your run's configuration to that copy:
+
+```sh
+# Initial smoke test: inexpensive setup validation.
+cp /opt/siderius/configs/llm/openai_smoke_luna.json ~/work/<slug>/llm-smoke.json
+# Recommended profile for substantive experiments.
+cp /opt/siderius/configs/llm/openai-moderate-v1.json ~/work/<slug>/llm-moderate.json
+```
+
+Copying a file does not switch an existing run: configure the caller to use the
+chosen file, then check the recorded model configuration. Keep a copy alongside
+your experiment log. You can change the models, but API prices vary by model
+and provider. Include both capability calls and your external coding agent in
+your budget; these JSON profiles do not select the external agent's model.
+
+For orchestration, follow `src/tools/orchestration_setup/README.md` in the
+SIDERIUS checkout. The setup assembles project instructions using a sandbox
+profile and a run declaration; the coding agent then writes the task-specific
+caller. A useful starting instruction for your agent is:
+
+> Read the released task's TASK_CARD.md and baseline instructions, then follow
+> SIDERIUS's orchestration_setup guide to prepare this writable project. Use
+> llm-smoke.json for a short smoke test and llm-moderate.json for substantive
+> experiments. Respect the task's train/validation split and scientific checks.
+> Set explicit time and API budgets, record each hypothesis and result, and
+> keep the complete training source needed to reproduce the submitted model.
+
+The setup tool's example sandbox is an isolation demonstration with a short
+budget, not a ready-made competition configuration. Set task-appropriate data
+access, GPU access and runtime limits. Follow the assembled project's commands;
+there is no universal caller command for all eight tasks.
+
 ## Package and check
 
 Stage only the files needed to reproduce and score your solution:

@@ -119,6 +119,24 @@ organizer data avoids downloading it again. See the technical guide for commands
 
 ## 4. Experiment and keep evidence as you go
 
+**We recommend orchestration mode for the competition.** A coding agent can
+choose and revise the sequence of SIDERIUS capability calls as evidence arrives,
+giving it more room to explore. Workflow mode follows a predefined path: it is
+cost-effective and predictable, but has less flexibility and a lower exploration
+ceiling. Orchestration is a recommendation, not a guarantee of a better score.
+
+Start with **Luna for smoke tests**, then use **Moderate for substantive runs**:
+
+| Purpose | LLM configuration in SIDERIUS v1.1.0 |
+| --- | --- |
+| Check that setup and a short run work | `configs/llm/openai_smoke_luna.json` |
+| Run your actual experiments (recommended) | `configs/llm/openai-moderate-v1.json` |
+
+You may replace the models. API prices differ by model and provider; check prices
+and set a budget before running. These profiles select models **inside SIDERIUS
+capabilities**. Your external orchestration agent uses its own model and budget.
+See [mode and configuration setup](docs/track2-guide.md#choose-a-mode-and-model-profile).
+
 Write an initial hypothesis: what change should help, and why? For each run, save
 its ID, code version, settings, reason for the change, result and next decision.
 Keep the original logs, including real failures. Change one interpretable thing
