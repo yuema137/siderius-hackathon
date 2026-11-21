@@ -24,7 +24,7 @@ GALILEO ADAPTATION
 main.tex replaces the example paper content with Galileo Hackathon 2026 report
 prompts, uses the single-blind workshop option, sets the workshop title and
 overrides only the venue notice. It preserves the official font sizes, margins
-and spacing. README.txt supplies Galileo-specific instructions. preview.pdf is
+and spacing. README.md supplies Galileo-specific instructions. preview.pdf is
 a compilation of this adapted main.tex. The additional template text is made
 available under the same CC BY 4.0 terms, attributed to Galileo Hackathon 2026
 report template contributors. Scientific content later added by participants
