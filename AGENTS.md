@@ -1,3 +1,8 @@
+> Scope: the technical workflow below is for Track 1, which is now closed.
+> For event onboarding and Track 2, start with [README.md](README.md) and
+> [docs/track2-guide.md](docs/track2-guide.md). Do not apply Track 1 ZIP limits
+> or checking tools to Track 2 model submissions.
+
 # Agent guide: build and check a Track 1 submission
 
 This file is for coding agents. Start with the participant's scientific question,

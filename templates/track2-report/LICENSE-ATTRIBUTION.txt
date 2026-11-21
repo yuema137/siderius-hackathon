@@ -1,0 +1,31 @@
+OFFICIAL FORMATTING TEMPLATE
+Formatting Instructions For NeurIPS 2026
+Author credited by Overleaf: NeurIPS 2026 Program Chairs.
+License shown on the official Overleaf template: Creative Commons Attribution
+4.0 International (CC BY 4.0).
+License: https://creativecommons.org/licenses/by/4.0/
+Legal text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+Official template page:
+https://www.overleaf.com/latex/templates/formatting-instructions-for-neurips-2026/bjdwqfdkyftc
+Official conference call linking the downloaded source archive:
+https://neurips.cc/Conferences/2026/CallForPapers
+Downloaded source:
+https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip
+Format inspiration / workshop guidelines:
+https://ml4physicalsciences.github.io/2026/guidelines.html
+Sources accessed: 2026-11-21.
+
+The distributed neurips_2026.sty is byte-for-byte identical to the official
+archive entry. Its existing attribution to Roman Garnett and the authors of
+nips15submit_e.sty is preserved in the file. No endorsement is implied.
+
+GALILEO ADAPTATION
+main.tex replaces the example paper content with Galileo Hackathon 2026 report
+prompts, uses the single-blind workshop option, sets the workshop title and
+overrides only the venue notice. It preserves the official font sizes, margins
+and spacing. README.txt supplies Galileo-specific instructions. preview.pdf is
+a compilation of this adapted main.tex. The additional template text is made
+available under the same CC BY 4.0 terms, attributed to Galileo Hackathon 2026
+report template contributors. Scientific content later added by participants
+is not assigned a license by this notice.

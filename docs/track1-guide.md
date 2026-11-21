@@ -1,0 +1,161 @@
+<p align="center">
+  <a href="https://siderius.scitra.org/hackathon">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="../assets/siderius-dark.svg">
+      <img src="../assets/siderius-light.svg" alt="SIDERIUS" width="360">
+    </picture>
+  </a>
+</p>
+
+# Track 1 · Create a scientific challenge
+
+> Archived participant guide: Track 1 submissions closed November 18, 2026. The workflow below remains available as a reference.
+> [Return to event onboarding](../README.md).
+
+| 🌐 Event website | 📝 Register | 📦 Submit |
+| --- | --- | --- |
+| [**The Galileo Hackathon**](https://siderius.scitra.org/hackathon) | [**Register for Track 1**](https://docs.google.com/forms/d/e/1FAIpQLSegtIj5T3vizkBu_Vy66cXYVrgAEU0pYpEJzxIrPJxY74n5mQ/viewform) | [**Open submission portal**](https://submit.siderius.scitra.org) |
+
+**Register first to receive submission access, then sign in with your registered GitHub account.**
+
+Looking for inspiration? [Explore the Track 1 guide, datasets, and simulation tools](https://siderius.scitra.org/hackathon/track-1).
+
+**The Galileo Hackathon — bring your scientific curiosity. Your agent helps with the code.**
+
+Bring a scientific question that you want others to explore with machine learning.
+Your challenge gives them **data, a clear goal, a fair evaluation, and a working
+baseline**. A baseline is a simple solution that others can reproduce and improve.
+**It need not be PyTorch or even machine learning:** classical algorithms,
+numerical methods, and rule-based Python scripts are welcome.
+
+**You do not need to write code by hand.** Work with a coding agent such as
+Claude Code or Codex. You make the scientific decisions; your agent helps turn
+them into a runnable SIDERIUS task package.
+
+```mermaid
+flowchart LR
+    Q["🔬 Choose a question"] --> D["📊 Prepare & share data"]
+    D --> B["🤖 Build with your agent"]
+    B --> C["✓ Check & improve"]
+    C --> U["📦 Upload your challenge"]
+```
+
+**Supported release: [SIDERIUS v1.1.0](https://github.com/yuema137/SIDERIUS/releases/tag/v1.1.0).** Ask your agent to use this release and the [setup instructions](../AGENTS.md#before-you-start).
+
+## Start with a question, not a leaderboard
+
+What would count as progress in **your science**? Detecting a weaker signal,
+predicting a useful material property, or making a simulation cheaper can all
+be meaningful goals. The best metric need not be the one AI papers usually use.
+
+A good challenge is more than “get a higher score.” Decide:
+
+- **What would we learn?** Name the scientific question and why its answer matters.
+- **What can the data tell us?** Define one independent sample and make sure there
+  is enough data and scientific information to support the question.
+- **What counts as success?** Choose a meaningful measurement and a fair test on
+  unseen samples. Keep related patients, experiments, or simulation runs together.
+
+For example, a detector-signal challenge might ask: *Can we remove noise without
+erasing a weak physical signal?* A useful evaluation would check signal recovery
+as well as noise reduction, with different acquisition runs held out for testing.
+This is an idea to develop—not an announced competition task.
+
+## 1 · Design it with your agent
+
+Open your coding agent and paste this. Replace the brackets with what you know;
+it is fine to start with an incomplete idea.
+
+```text
+Help me design a scientific ML challenge for The Galileo Hackathon.
+Use this kit: https://github.com/yuema137/siderius-hackathon
+Read README.md, AGENTS.md, and SPEC.md first.
+
+My scientific question: [what I want to understand]
+My data: [a link, local files, or a simulation I could use]
+My available compute and time: [what I can use]
+
+Discuss the science with me before coding. Suggest 2–3 possible
+challenges and explain what each could teach us. Help me choose
+inputs, outputs, independent samples, a fair data split, meaningful
+metrics, and a simple baseline. Ask about missing information.
+Keep the explanations accessible; I may be new to ML.
+
+Once I confirm the design, help set up the supported SIDERIUS version,
+prepare the task package and challenge brief, and run the baseline.
+Ask before large downloads or training. Tell me which files to upload
+to Zenodo and what information you need back from me.
+```
+
+**Keep questioning the design.** For example:
+
+> “Could a model get a good score without solving the scientific problem?
+> What would catch that? Could speed, model size, or compute cost also matter?”
+
+Your agent can use the [Local walkthrough](../examples/README.md) to learn the
+package format with a tiny, locally generated dataset. No Zenodo account or
+download is needed for the walkthrough. **It is not a submission-ready challenge.**
+For your real submission, publish your own data on Zenodo and pass the full checker.
+
+## 2 · Handle the human steps
+
+| You do | Your agent helps with |
+| --- | --- |
+| **Register for Track 1**, sign in with your registered GitHub account, and create a challenge in the portal. Give your agent its assigned task ID. | Prepare your submission locally while access is arranged. |
+| **Confirm the science and data-sharing rights.** Check permission before redistributing someone else's dataset. | Inspect data, propose a split and evaluation, and identify possible shortcuts. |
+| **Upload and publish the data on [Zenodo](https://zenodo.org).** Choose an appropriate license, then give your agent the record link/DOI. Restricted records must be shared with organizers as described in the kit. | Prepare the data files, record their checksums, and build the download/processing script. |
+| **Approve compute use and review the results.** Make sure the challenge represents your intent. | Run the baseline, explain the results, and save the files needed to reproduce them. |
+| **Upload the final zip to the [submission portal](https://submit.siderius.scitra.org).** Choose whether to permit public release. | Build the zip and give you its checksum to compare with the upload receipt. |
+
+## 3 · Ask your agent to check it
+
+There are two distinct parts:
+
+| Check | What it does |
+| --- | --- |
+| **Deterministic checker** | Checks files, data access and checksums, SIDERIUS loading, and reproduction of reported baseline scores. It makes **no LLM calls**. |
+| **LLM-assisted skill** | Guides your agent through running the checker, explaining failures, fixing problems, and offering advisory feedback about evaluation and leakage. It cannot override the checker result. |
+
+After building your package, paste:
+
+```text
+My submission is at [folder path]. My Zenodo record is [link].
+My portal task ID is [ID].
+Use skills/track1-task-check/SKILL.md in the hackathon kit.
+
+Run the deterministic checker, explain any failures, and help me fix
+and recheck them. Ask before downloading data or retraining the baseline.
+Report PASS, FAIL, or INCOMPLETE exactly; do not treat skipped required
+checks as a pass or change reported scores just to make checks pass.
+
+Separately review whether evaluation matches my scientific goal,
+whether leakage or shortcuts are possible, and what limitations
+I should document. When the submission is ready,
+use tools/make_submission.py to build the zip. Tell me its location,
+checksum, and anything I still need to do before uploading.
+```
+
+Organizer review is a **manual reproducibility check**, not a judgment of
+scientific merit or research quality. “Verified” only confirms reproducibility
+of the current submission. Your agent's advice does not grant that status.
+
+## What goes in the submission?
+
+| Component | Purpose |
+| --- | --- |
+| 📝 **Challenge brief** | Explain the question, evaluation, baseline, and known limitations. |
+| 🔗 **Data access** | Link to Zenodo and provide code to fetch, verify, and prepare the data. |
+| 📦 **Task package** | Tell SIDERIUS how to read inputs, produce outputs, and score results. |
+| ▶️ **Working baseline** | Provide a runnable solution, model weights or algorithm code, and reported results. |
+
+Upload **one zip**. The dataset stays on Zenodo. Other participants cannot see
+your submission; public release requires your permission. Until the deadline
+you can upload again: the new upload replaces your current one, and only the
+latest is kept and reviewed.
+
+**Technical instructions for your agent:** [AGENTS.md](../AGENTS.md) ·
+[Exact specification](../SPEC.md) ·
+[Check skill](../skills/track1-task-check/SKILL.md) ·
+[Challenge brief template](../templates/TASK_CARD.md)
+
+License: [MIT](../LICENSE).

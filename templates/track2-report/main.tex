@@ -1,0 +1,112 @@
+\documentclass{article}
+\PassOptionsToPackage{numbers}{natbib}
+\usepackage[sglblindworkshop]{neurips_2026}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsfonts}
+\usepackage{microtype}
+\usepackage{xcolor}
+\workshoptitle{Galileo Hackathon 2026}
+% Venue notice only: preserve the official typography, margins and spacing.
+% This is an independent hackathon report, not a NeurIPS/ML4PS submission.
+\makeatletter
+\renewcommand{\@noticestring}{Galileo Hackathon 2026. Participant research report.}
+\makeatother
+\title{[A specific scientific finding or method]}
+\author{[Team name] \\ {[Member names and affiliations]}
+\\ Team ID: [team-id] \quad Task slug: [task-slug]}
+\begin{document}
+\maketitle
+\begin{abstract}
+[State the scientific question, the initial idea, the most informative experiment,
+and the final finding with its main limitation. Replace all bracketed prompts
+with your own evidence-based account.]
+\end{abstract}
+
+\section{Scientific goal \& initial hypothesis}
+[Name the task and explain the scientific objective beyond its leaderboard metric.
+State your initial hypothesis, why it was plausible, and what observation would
+support or contradict it. Define unfamiliar terms.]
+
+\section{Research trajectory}
+[Describe how evidence changed your decisions. Include real unsuccessful attempts
+or negative results where they occurred; do not invent failures or fill a quota.
+Summarize the most informative decision points (six or fewer is a suggestion).
+Link the complete original logs in Section~6.]
+
+\begin{table}[ht]
+\caption{Decision trail. Replace or extend rows with actual runs; identifiers must
+match the accompanying evidence.}
+\label{tab:trajectory}
+\centering
+\begin{tabularx}{\textwidth}{@{}lXXXX@{}}
+\toprule
+Run ID & Why & Change & Result & Next decision \\
+\midrule
+{[R01]} & [Question] & [Intervention] & [Observation] & [Decision] \\
+{[R02]} & [Question] & [Intervention] & [Observation] & [Decision] \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Final model \& comparisons}
+[Explain the final method, training procedure and selection rationale.
+Bind this account to an exact \textbf{submission ID}, model artifact or checksum,
+and code version. Specify evaluation split, metric name and direction, applicable
+gates and their outcomes. Distinguish measured outcomes from untested claims.]
+
+\begin{table}[ht]
+\caption{Comparable measurements. Use the official baseline, your final model,
+and a meaningful alternative. Mark unmeasured values as not measured; do not
+invent results. Add uncertainty or repeated-run information when available.}
+\label{tab:comparison}
+\centering
+\begin{tabularx}{\textwidth}{@{}lXXXX@{}}
+\toprule
+Method & Split & Metric & Gates & Cost, if known \\
+\midrule
+Official baseline & [Split] & [Value] & [Outcome] & [Compute/time] \\
+Final model & [Split] & [Value] & [Outcome] & [Compute/time] \\
+{[Alternative]} & [Split] & [Value] & [Outcome] & [Compute/time] \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Key insights}
+[Give at most three insights. For each, state a \textbf{claim}, the
+\textbf{evidence} supporting it (run/table/figure), and a \textbf{limitation}.
+Label a proposed causal explanation as a hypothesis unless the experiments
+establish causality. A well-supported negative result is a valid insight.]
+
+\section{Limitations \& next experiment}
+[Identify the most consequential uncertainty, failure mode or restricted scope.
+Propose a specific next experiment, the competing explanations it would test,
+and how different outcomes would change your conclusion.]
+
+\section{Reproducibility, contributions \& AI use}
+[Provide the exact training and inference commands, environment and code version,
+seeds where relevant, data access and split usage, and links to model artifacts
+and complete original experiment logs. Report unavailable evidence explicitly.
+Identify each member's contributions. State AI tools and uses, and how their
+outputs were checked. The research judgments and core arguments are your own;
+see the AI policy in README.txt.]
+
+% OPTIONAL: delete this entire section if it does not apply.
+% It is part of the four-page body, not an appendix.
+\section*{Optional: Reward hacking discovery}
+[Explain the scientific goal versus the metric incentive; the triggering
+condition; a minimal reproducible example; evidence that a high score can coexist
+with scientific failure; and a proposed fix with possible false positives.
+Make the reasoning your own and link supporting artifacts.]
+
+% References may extend beyond the four-page body. Do not add narrative appendices.
+\clearpage
+\begin{thebibliography}{9}
+\bibitem{replace} [Replace with accurate references you actually used, or remove
+this placeholder if no references are needed. Verify titles, authors and links.]
+\end{thebibliography}
+\end{document}
