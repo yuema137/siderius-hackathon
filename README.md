@@ -226,9 +226,7 @@ at a time where possible; a negative result can still teach you something useful
 **Train only on training data.** Use validation to compare models and choose configurations, not as training
 examples or targets to fit. Do not memorize validation answers, use label lookup
 tables, or optimize model parameters directly against validation labels.
-Do not train on test data. Geoneutrinos uses public-validation scoring as an
-explicit exception to hidden scoring; this is **not permission to fit validation
-labels**, and its score does not establish hidden-set generalization.
+Do not train on test data.
 
 Include complete original training source. Organizers can retrain it and review
 whether the submitted artifact is reproducible. A high metric alone is not proof
