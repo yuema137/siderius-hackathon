@@ -165,7 +165,7 @@ the H100 for that during the competition. For the warm-up, follow the bounded
 Luna recipe instead of launching a full research run. For substantive
 competition experiments, switch to the Moderate profile described below.
 
-## 4. Get a task and run its baseline first
+## 4. Get a task and learn its baseline first
 
 After the noon release, get packages from the
 [Releases page](https://github.com/yuema137/siderius-hackathon/releases).
@@ -190,9 +190,10 @@ portal choice and report. You may not solve a task that any teammate helped desi
 
 Read its `TASK_CARD.md`, package README and baseline instructions. Identify the
 input, output, split, metric direction, and validity checks before changing code.
-Prepare the data and run the provided baseline's documented training and
-evaluation commands. Keep its output as your first comparison. Commands differ
-between tasks; use the released package's recipe, not a guessed universal command.
+You may also prepare the data and run the provided baseline's documented training
+and evaluation commands to understand its behavior and keep a comparison result.
+Running the baseline first is optional. Commands differ between tasks; use the
+released package's recipe, not a guessed universal command.
 
 Data downloads range from roughly 0.2 MB to 20.5 GB. Geoneutrinos is about
 20.5 GB and pitching-wing-wake about 3.4 GB; allow time and disk space. Shared
