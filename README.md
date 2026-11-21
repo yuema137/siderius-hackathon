@@ -53,7 +53,7 @@ All times below are **PST (UTC−8), November 21**.
 | 10:15 am | Event begins; see the website for talks and the panel. |
 | By 11:00 am | Submit the Track 2 team form, including public SSH keys, so access can be prepared. |
 | 11:45 am–1:00 pm | Warm-up and onboarding: check access and your environment. |
-| Noon | Task packages are scheduled for release on the [repository Releases page](https://github.com/yuema137/siderius-hackathon/releases). |
+| Task release | Official task packages are [now available to download](https://github.com/yuema137/siderius-hackathon/releases/tag/track2-2026-11-21). |
 | 1:00–4:00 pm | Competition: run experiments, package and submit. |
 | 4:00 pm sharp | Model submissions close. An upload still in progress is refused; upload early. |
 | 4:00–4:30 pm | Finish the report using your completed experiments and submitted model. |
@@ -167,12 +167,12 @@ competition experiments, switch to the Moderate profile described below.
 
 ## 4. Get a task and learn its baseline first
 
-After the noon release, get packages from the
-[Releases page](https://github.com/yuema137/siderius-hackathon/releases).
+The official task packages are now available from the
+[November 21 task release](https://github.com/yuema137/siderius-hackathon/releases/tag/track2-2026-11-21).
 Do not use this repository's Track 1 quickstart examples as competition tasks.
 On organizer machines, released task packages and data are provided under
 `/data/galileo/<slug>/`; copy the package into your own work folder before editing.
-If access or files are not yet available, check announcements or ask an organizer.
+Package availability does not mean your assigned SSH access is ready. If access or files are not yet available, check announcements or ask an organizer.
 
 | Domain | Scientific problem | Task slug |
 | --- | --- | --- |
