@@ -5,11 +5,32 @@ from pathlib import Path
 from preview import EXP_REV
 
 
-def bounded_bridge_factory(inner_factory, status, save, out, *, clock=time.monotonic, evidence_context=None):
+class SetupError(RuntimeError):
+ """Only locally constructed, secret-free setup messages may be displayed."""
+
+
+def model_route(provider, model):
+ if provider=='anthropic' and not model:
+  raise SetupError('--provider anthropic requires --model with a Claude model enabled for your account.')
+ route={'provider':provider,'model_id':model or 'gpt-6-luna'}
+ if provider=='openai':route['reasoning_effort']='low'
+ return route
+
+
+def check_live_setup(provider, environment, find_spec):
+ key_env={'openai':'OPENAI_API_KEY','anthropic':'ANTHROPIC_API_KEY'}[provider]
+ if not environment.get(key_env):raise SetupError(f'{key_env} is absent. No API call started; supply your own provider API key to this process.')
+ if provider=='anthropic' and any(find_spec(name) is None for name in ('anthropic','pydantic_ai')):
+  raise SetupError('Claude needs the optional adapter. In your SIDERIUS checkout run: uv sync --group dev --extra pydantic-ai --frozen')
+
+
+def bounded_bridge_factory(inner_factory, status, save, out, *, clock=time.monotonic, evidence_context=None, route=None):
  started=clock()
+ route=route or model_route("openai",None)
  class BoundedBridge:
   def __init__(self,**kwargs):
-   kwargs.update(provider='openai',model_id='gpt-6-luna',reasoning_effort='low',max_retries=0,timeout_retries=0,request_timeout=55,max_output_tokens=8192,reflect_max_output_tokens=8192)
+   kwargs.pop('reasoning_effort',None)
+   kwargs.update(route,max_retries=0,timeout_retries=0,request_timeout=55,max_output_tokens=8192,reflect_max_output_tokens=8192)
    self.inner=inner_factory(**kwargs)
    self.inner.set_run_context(workspace=out,iter=0,run_name='warmup',run_id=out.name)
   def __getattr__(self,name):return getattr(self.inner,name)
@@ -50,17 +71,23 @@ def main():
  ap=argparse.ArgumentParser(description=__doc__)
  ap.add_argument('--preview-dir',type=Path,required=True);ap.add_argument('--output-dir',type=Path,required=True)
  ap.add_argument('--siderius-exp',type=Path,help='Optional existing checkout at the pinned revision; otherwise fetched automatically.')
- ap.add_argument('--live',action='store_true',help='Authorize bounded real Luna API calls. Without this, only validate native input.')
- args=ap.parse_args();preview=args.preview_dir.resolve();out=args.output_dir.resolve()
+ ap.add_argument('--provider',choices=['openai','anthropic'],default='openai')
+ ap.add_argument('--model',help='Explicit model ID; required for Anthropic. Default OpenAI model: gpt-6-luna.')
+ ap.add_argument('--live',action='store_true',help='Authorize bounded real calls to the selected provider. Without this, validate native input only.')
+ args=ap.parse_args()
+ try:route=model_route(args.provider,args.model)
+ except SetupError as exc:ap.error(str(exc))
+ preview=args.preview_dir.resolve();out=args.output_dir.resolve()
  baseline=json.loads((preview/'baseline.json').read_text())
  if baseline.get('exp_revision')!=EXP_REV or baseline.get('validation_count')!=442:raise SystemExit('Run the matching preview first.')
  out.mkdir(parents=True,exist_ok=False)
- status={'state':'preparing','live_requested':args.live,'bridge_calls_started':0,'native_training':'not_run','wall_limit_seconds':240,'request_limit':4,'output_tokens_per_request':8192}
+ status={'state':'preparing','provider':args.provider,'model_id':route['model_id'],'live_requested':args.live,'bridge_calls_started':0,'native_training':'not_run','wall_limit_seconds':240,'request_limit':4,'output_tokens_per_request':8192}
  def save(): (out/'status.json').write_text(json.dumps(status,indent=2))
  save()
  try:
-  if args.live and not os.environ.get('OPENAI_API_KEY'):
-   raise RuntimeError('OPENAI_API_KEY is not set. No key value was read or printed. No API call started.')
+  if args.live:
+   from importlib.util import find_spec
+   check_live_setup(args.provider,os.environ,find_spec)
   # Imports must come from this checkout's installed, frozen SIDERIUS environment.
   from importlib.metadata import version
   if version('siderius')!='1.1.0':raise RuntimeError('This caller targets SIDERIUS v1.1.0; use the documented release.')
@@ -88,7 +115,7 @@ def main():
     (out/'interpretation-input.json').write_text(request.model_dump_json(indent=2))
     (out/'request-check.json').write_text(json.dumps({'task_source':str(exp/'tasks/phyts_tess/compositions/rotation_regression.yaml'),'task_revision':EXP_REV,'baseline_source':str(preview/'baseline.json'),'cold_start':False,'observed_validation_population':442,'metric_id':composition.selection_metric_spec.id,'no_training_or_data_materialization_enabled':True,'interpretation_input_validated':True},indent=2))
     if not args.live:
-     status['state']='native_input_validated_no_api';save();print('Native interpretation input validated. No Luna call, no training.');return
+     status['state']='native_input_validated_no_api';save();print('Native interpretation input validated. No model API call, no training.');return
     # Supported dependency injection sets stricter transport limits without replacing native agents.
     from agent.llm_bridge import LLMBridge
     from nodes.result_interpretation_agent.result_interpretation_agent import ResultInterpretationAgent
@@ -98,9 +125,9 @@ def main():
     def timeout_handler(signum,frame):raise TimeoutError('Shared 240-second API-call wall budget exhausted.')
     signal.signal(signal.SIGALRM,timeout_handler);signal.alarm(240)
     context_holder={}
-    BoundedBridge=bounded_bridge_factory(LLMBridge,status,save,out,evidence_context=lambda:context_holder.get('evidence'))
+    BoundedBridge=bounded_bridge_factory(LLMBridge,status,save,out,evidence_context=lambda:context_holder.get('evidence'),route=route)
     status['state']='interpretation_started';save()
-    interpreted=ResultInterpretationAgent(provider='openai',model_id='gpt-6-luna',max_retries=0,reasoning_effort='low',bridge_factory=BoundedBridge).run(request)
+    interpreted=ResultInterpretationAgent(**route,max_retries=0,bridge_factory=BoundedBridge).run(request)
     (out/'interpretation.json').write_text(interpreted.model_dump_json(indent=2))
     context_holder['evidence']=preview_evidence_context(baseline,interpreted)
     (out/'proposal-evidence-context.txt').write_text(context_holder['evidence'])
@@ -110,7 +137,7 @@ def main():
     proposal_input=ProposalInput.model_validate(payload)
     (out/'proposal-input.json').write_text(proposal_input.model_dump_json(indent=2))
     status['state']='proposal_started';save()
-    proposed=MLModelProposalAgent(provider='openai',model_id='gpt-6-luna',max_retries=0,reasoning_effort='low',bridge_factory=BoundedBridge).run(proposal_input)
+    proposed=MLModelProposalAgent(**route,max_retries=0,bridge_factory=BoundedBridge).run(proposal_input)
     (out/'proposal.json').write_text(proposed.model_dump_json(indent=2));signal.alarm(0)
     status['state']='native_interpretation_and_proposal_returned';status['scientific_content_review']='required_not_automatically_certified';save()
     (out/'READ-ME.txt').write_text('The native agents returned interpretation.json and proposal.json. These are advice/proposal artifacts, not implemented models, training evidence or a measured improvement. Inspect status and diagnostics in both outputs. Compare the proposal with the measured baseline.json; run formal experiments later on the H100.\n')
@@ -120,6 +147,6 @@ def main():
   # Avoid copying provider exception bodies, which may carry request context, into public artifacts.
   save();print(f'Warm-up did not complete: {type(exc).__name__}. See status.json; no success is claimed.')
   if isinstance(exc,ModuleNotFoundError):print('Use the selected SIDERIUS checkout’s frozen .venv/bin/python after uv sync --group dev --frozen.')
-  elif isinstance(exc,RuntimeError) and not os.environ.get('OPENAI_API_KEY'):print('OPENAI_API_KEY is absent; no API call was made.')
+  elif isinstance(exc,SetupError):print(str(exc))
   raise SystemExit(2)
 if __name__=='__main__':main()

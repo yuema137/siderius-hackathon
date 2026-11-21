@@ -1,0 +1,11 @@
+{
+  "date": "2026-11-21",
+  "default": "openai/gpt-6-luna low reasoning unchanged",
+  "anthropic": "explicit --provider anthropic --model; native Messages adapter; ANTHROPIC_API_KEY; no OpenAI reasoning_effort",
+  "warmup_tests_passed": 12,
+  "siderius_native_mock_tests_passed": 43,
+  "native_anthropic_input_check": "passed; 0 model calls; pinned TESS composition; CPU",
+  "live_claude_tested": false,
+  "new_paid_calls": 0,
+  "limits": "No account access or Claude output-quality claim. Earlier live Luna validation is preserved separately."
+}

@@ -119,6 +119,51 @@ That check still needs the installed SIDERIUS environment and official task
 source, but it does not contact the model provider. It does not certify a live
 Luna run.
 
+## Use your own Claude API key instead
+
+The default above remains Luna. Changing only the key or `llm.json` does not
+select Claude in this standalone warm-up; select the provider and model explicitly.
+Claude Code subscription login is not an `ANTHROPIC_API_KEY`.
+
+In your selected SIDERIUS checkout, install the native Anthropic adapter:
+
+```bash
+(cd "$SIDERIUS" && uv sync --group dev --extra pydantic-ai --frozen)
+```
+
+Read your own Claude Console API key privately in **bash** (not into source files):
+
+```bash
+read -r -s -p 'Claude API key: ' ANTHROPIC_API_KEY; printf '\n'
+export ANTHROPIC_API_KEY
+```
+
+From the hackathon checkout, select a model enabled in your Console account:
+
+```bash
+"$SIDERIUS/.venv/bin/python" examples/warmup-tess/orchestrate.py \
+  --preview-dir /tmp/tess-warmup --output-dir /tmp/tess-warmup-claude \
+  --provider anthropic --model claude-sonnet-5-5 --live
+```
+
+The model name is an example qualified by SIDERIUS v1.1.0, not a guarantee of
+access in your account. This uses native Anthropic Messages through SIDERIUS's
+optional adapter, not an OpenAI-compatible URL or a Claude Code login token.
+OpenAI-only `reasoning_effort` is omitted for Claude. The same four-request,
+240-second and 8,192-output-token bounds apply. Do not run merely to check
+configuration: omit `--live` for the native-input check (no provider request).
+
+Both agents and every bounded bridge use the selected route. Setup errors name
+the missing environment variable or dependency without printing key values.
+You can also choose another OpenAI model with `--provider openai --model MODEL_ID`;
+this warm-up retains low reasoning, so select a model supporting that option.
+
+**Validation:** Claude routing, key/dependency refusal and shared budget guards
+were tested offline, including native SDK mock HTTP tests. No new paid Claude
+call was made; account access, quota and the quality of Claude's proposal remain
+unverified. The prior successful live Luna run below remains evidence for Luna
+only.
+
 ## Validation status
 
 The real-data CPU preview was run successfully, including checksums, split
