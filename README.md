@@ -277,7 +277,7 @@ submission ID and artifact checksum with your experiment records.
 Prepare **one report per task**, identifying your team, task slug and the exact
 final model submission ID. Use the standard LaTeX source in
 [templates/track2-report](templates/track2-report/), its
-[instructions](templates/track2-report/README.txt), or the
+[instructions](templates/track2-report/README.md), or the
 [PDF preview](templates/track2-report/preview.pdf). Compile with
 `latexmk -pdf main.tex` (or run `pdflatex main.tex` twice).
 
