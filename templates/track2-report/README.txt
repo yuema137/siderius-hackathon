@@ -89,7 +89,7 @@ the report for your submitted model; this does not extend model submissions
 or permit new competition scores. Use the separate report PDF form
 in the same Track 2 portal: choose the task and link your own submission ID for
 that task. It permits report replacement before the deadline without using the
-five-upload model quota. A report about a failed submission does
+ten-upload model quota. A report about a failed submission does
 not confer model validity.
 
 Awards and review context
