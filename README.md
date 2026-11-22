@@ -259,7 +259,7 @@ Sign in to the [Track 2 portal](https://submit.siderius.scitra.org/track2) with
 your team ID and access code, choose the matching task, and upload. Save the
 submission ID and artifact checksum with your experiment records.
 
-- **Five accepted uploads per team per task**. Each task has a separate allowance.
+- **Ten accepted uploads per team per task**. Each task has a separate allowance.
   Accepted uploads count even if evaluation later fails. Uploads refused by the
   portal's initial format check do not count.
 - Leave **at least three minutes** between uploads to the same task.

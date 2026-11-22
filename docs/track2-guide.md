@@ -197,7 +197,7 @@ scp team@<IP>:~/work/<slug>/submission.zip ./<slug>-submission.zip
 ```
 
 Upload through the [portal](https://submit.siderius.scitra.org/track2). Save the
-submission ID, exact ZIP and checksum. Each team may make five accepted uploads per task; each task has a separate allowance; later evaluation failure does not refund an accepted attempt.
+submission ID, exact ZIP and checksum. Each team may make ten accepted uploads per task; each task has a separate allowance; later evaluation failure does not refund an accepted attempt.
 
 ## Task contracts
 
